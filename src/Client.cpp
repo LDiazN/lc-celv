@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <stdio.h>
 #include <fstream>
+#include "Core.hpp"
 
 namespace CELV
 {
