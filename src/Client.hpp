@@ -2,10 +2,7 @@
 #define CLIENT_HPP
 #include <string>
 #include <fstream>
-
-#define SUCCESS 0
-#define ERROR 1
-#define STATUS int
+#include "Core.hpp"
 
 namespace CELV
 {
