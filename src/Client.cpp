@@ -24,7 +24,7 @@ namespace CELV
         // Parse first word of terminal, as a command
         while (_running)
         {   
-            std::cout << ">>> ";
+            std::cout << "AELV >> ";
             ExecPrompt(std::cin);
             std::cout << std::endl;
         }
