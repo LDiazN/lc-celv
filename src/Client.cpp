@@ -9,6 +9,7 @@ namespace CELV
 {
     Client::Client()
         : _running(false)
+        , _filesystem()
     {
 
     }
@@ -27,7 +28,6 @@ namespace CELV
             ExecPrompt(std::cin);
             std::cout << std::endl;
         }
-        
     }
 
     void Client::Run(const std::string& filepath)
@@ -69,7 +69,7 @@ namespace CELV
             if (ss >> name)
                 CreateDir(name); 
             else 
-                std::cerr << "Missing argumen for command: " << command << std::endl;
+                std::cerr << "Missing argument for command: " << command << std::endl;
         }
         else if (command == "crear_archivo")
         {
@@ -77,7 +77,7 @@ namespace CELV
             if (ss >> name)
                 CreateFile(name); 
             else 
-                std::cerr << "Missing argumen for command: " << command << std::endl;
+                std::cerr << "Missing argument for command: " << command << std::endl;
         }
         else if (command == "eliminar")
         {
@@ -85,7 +85,7 @@ namespace CELV
             if (ss >> name)
                 Remove(name); 
             else 
-                std::cerr << "Missing argumen for command: " << command << std::endl;
+                std::cerr << "Missing argument for command: " << command << std::endl;
         }
         else if (command == "leer")
         {
@@ -93,7 +93,7 @@ namespace CELV
             if (ss >> name)
                 Read(name); 
             else 
-                std::cerr << "Missing argumen for command: " << command << std::endl;
+                std::cerr << "Missing argument for command: " << command << std::endl;
         }
         else if (command == "escribir")
         {
@@ -105,7 +105,7 @@ namespace CELV
             if (name != "")
                 Write(name, content); 
             else 
-                std::cerr << "Missing argumen for command: " << command << std::endl;
+                std::cerr << "Missing argument for command: " << command << std::endl;
         }
         else if (command == "ir")
         {
@@ -121,7 +121,7 @@ namespace CELV
             if (ss >> filepath)
                 Import(filepath); 
             else 
-                std::cerr << "Missing argumen for command: " << command << std::endl;
+                std::cerr << "Missing argument for command: " << command << std::endl;
         }
         else if (command == "celv_iniciar")
         {
@@ -137,7 +137,7 @@ namespace CELV
             if (ss >> version) 
                 CELVGo(version); 
             else 
-                std::cerr << "Missing argumen for command: " << command << std::endl;
+                std::cerr << "Missing argument for command: " << command << std::endl;
         }
         else if (command == "celv_fusion")
         {
@@ -146,43 +146,81 @@ namespace CELV
             if ((ss >> version1) && (ss >> version2)) 
                 CELVFusion(version1, version2); 
             else 
-                std::cerr << "Missing argumen for command: " << command << std::endl;
+                std::cerr << "Missing argument for command: " << command << std::endl;
+        }
+        else if (command == "ls")
+        {
+            List();
+        }
+        else 
+        {
+            std::cerr << RED << "Invalid command: " << command << RESET << std::endl;
         }
         return SUCCESS;
     }
 
     void Client::CreateDir(const std::string& filename)
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error;
+        if(_filesystem.CreateFile(filename, FileType::DIRECTORY, error) == ERROR)
+            std::cerr << RED << error << RESET << std::endl;
     }
 
     void Client::CreateFile(const std::string& filename)
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error;
+        if(_filesystem.CreateFile(filename, FileType::DOCUMENT, error) == ERROR)
+            std::cerr << RED << error << RESET << std::endl;
     }
 
     void Client::Remove(const std::string& filename)
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error;
+        if(_filesystem.RemoveFile(filename, error) == ERROR)
+            std::cerr << RED << error << RESET << std::endl;
     }
 
     void Client::Read(const std::string& filename)
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error, content;
+
+        if(_filesystem.ReadFile(filename, content, error) == ERROR)
+        {
+            std::cerr << RED << error << RESET << std::endl;;
+            return;
+        }
+        
+        std::cout << content << std::endl;
     }
-    void Client::Write(const std::string& filename, const File& content)
+
+    void Client::Write(const std::string& filename, const std::string& content)
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error;
+        if(_filesystem.WriteFile(filename, content, error) == ERROR)
+            std::cerr << RED << error << RESET << std::endl;
     }
 
     void Client::Go(const std::string& filename)
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error;
+        if(_filesystem.ChangeDirectory(filename, error) == ERROR)
+            std::cerr << RED << error << RESET << std::endl;
     }
 
     void Client::Go()
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error;
+        if(_filesystem.ChangeDirectory(error) == ERROR)
+            std::cerr << RED << error << RESET << std::endl;
+    }
+
+    void Client::List()
+    {
+        auto const &files = _filesystem.List();
+        for (auto const& my_file : files)
+        {
+            std::cout << (my_file.GetFileType() == FileType::DIRECTORY ? BLUE : GREEN) << my_file.GetName()  << RESET << std::endl;
+        }
     }
 
     void Client::Import(const std::string& local_filepath)
@@ -229,8 +267,5 @@ namespace CELV
         std::cout << "\t- celv_vamos version: cambia la version actual a la version especificada\n";
         std::cout << "\t- celv_fusion version1 version2: Trata de fusionar las dos versiones especificadas\n";
         std::cout << "\t- celv_importar camino_directorio: Imita la estructura de archivos del directorio especificado\n";
-
-        
-
     }
 }

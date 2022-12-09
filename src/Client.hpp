@@ -3,10 +3,10 @@
 #include <string>
 #include <fstream>
 #include "Core.hpp"
+#include "FileSystem.hpp"
 
 namespace CELV
 {
-    using File = std::string;
     using Version = std::string;
 
     class Client
@@ -35,7 +35,7 @@ namespace CELV
             /// @brief Try to write the specified `content` to the name specified by `filename`. Report error if not possible.
             /// @param filename 
             /// @param content 
-            void Write(const std::string& filename, const File& content);
+            void Write(const std::string& filename, const std::string& content);
 
             /// @brief try to go to the directory specified by `filename`. Report error if not possible.
             /// @param filename name of dir to go
@@ -43,6 +43,9 @@ namespace CELV
 
             /// @brief Try to go to the parent directory of the current directory. Report error if not possible.
             void Go();
+
+            /// @brief List content of current working directory
+            void List();
 
             /// @brief Import the directory structure specified by `local_filepath` and mirror it in memory, only considers dirs and files. 
             /// Report error if not possible.
@@ -86,6 +89,8 @@ namespace CELV
 
         private:
             bool _running;
+            FileSystem _filesystem;
+
 
     };
 }

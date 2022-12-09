@@ -41,6 +41,10 @@ namespace CELV
         /// @return Content of file as string
         std::string GetContent() const;
 
+        /// @brief Set content to the specified new content
+        /// @param new_content content to add
+        void SetContent(const std::string& new_content);
+
         private:
         std::string _name;
         std::string _content; // Empty when file type is directory
@@ -57,6 +61,8 @@ namespace CELV
         /// @param parent parent file
         FileTree(FileID id, std::shared_ptr<FileTree> parent);
 
+        ~FileTree() { }
+
         /// @brief Get parent of this tree
         /// @return pointer to parent
         std::shared_ptr<FileTree> GetParent() const { return _parent; }
@@ -66,6 +72,8 @@ namespace CELV
         /// @param file file to add as child
         void AddFile(std::shared_ptr<FileTree> file);
 
+        void RemoveFile(FileID file_id);
+
         /// @brief Return list of contained files
         /// @return files contained by this node
         std::vector<std::shared_ptr<FileTree>> ContainedFiles() const;
@@ -74,6 +82,12 @@ namespace CELV
         /// @param id id of file to check if exists
         /// @return if this file tree contains the required file
         bool ContainsFile(FileID id);
+
+        FileID GetFileID() const { return _file_id; }
+
+        /// @brief Get how many children has this folder of the file tree
+        /// @return amount of childs in first level of this file
+        size_t GetNChilds() const { return _contained_files.size(); }
 
         private:
         std::map<FileID, std::shared_ptr<FileTree>> _contained_files;
@@ -88,7 +102,7 @@ namespace CELV
 
         /// @brief List files in current directory
         /// @return List of files in current directory
-        const std::vector<File>& List() const;
+        const std::vector<File> List() const;
 
         /// @brief Try to change directory to a directory named `directory_name`. If not such directory, return error  
         /// @param directory_name Name of directory to change to
@@ -130,7 +144,7 @@ namespace CELV
 
         private:
         std::vector<File> _files;
-        FileTree _file_tree;
+        std::shared_ptr<FileTree> _file_tree;
         std::shared_ptr<FileTree> _working_dir;
     };
 }
