@@ -110,7 +110,8 @@ namespace CELV
 
         /// @brief Get reference to childs of this node
         /// @return childs contained by this node
-        const ChildMap& GetChilds() const { return _contained_files; }
+        const ChildMap& GetChilds(Version version ) const 
+        { return _change_box != nullptr && version >= _change_box->GetVersion() ? _change_box->GetChilds(version) : _contained_files ; }
 
         private:
         /// @brief This event is called whenever a new node is created due to change box 

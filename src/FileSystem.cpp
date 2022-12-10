@@ -90,7 +90,7 @@ namespace CELV
             return new_node;
         }
 
-        auto parent_childs(_parent->GetChilds());
+        auto parent_childs(_parent->GetChilds(version));
         parent_childs.erase(_file_id);
         parent_childs[new_file_id] = new_node;
         auto possible_new_parent = _parent->UpdateNode(parent_childs, version, out_new_version_parent);
@@ -99,6 +99,9 @@ namespace CELV
             new_node->SetParent(_parent);
         else 
             new_node->SetParent(possible_new_parent);
+
+        // Update childs of this node as childs of change box, the newest version 
+        new_node->SetNewChilds(_change_box->GetChilds(version));
 
         return new_node;
     }
@@ -125,7 +128,7 @@ namespace CELV
             return new_node;
         }
 
-        auto parent_childs(_parent->GetChilds());
+        auto parent_childs(_parent->GetChilds(version));
         parent_childs[_file_id] = new_node;
         auto possible_new_parent = _parent->UpdateNode(parent_childs, version, out_new_version_parent);
 
@@ -320,6 +323,7 @@ namespace CELV
         }
 
         _current_version = version;
+        return SUCCESS;
     }
 
 }
