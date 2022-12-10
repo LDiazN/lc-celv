@@ -18,6 +18,7 @@ namespace CELV
     };
 
     using FileID = size_t;
+    using Version = size_t;
     class File
     {
         public:
@@ -55,44 +56,89 @@ namespace CELV
     class FileTree
     {
         public:
+        using ChildMap = std::map<FileID, std::shared_ptr<FileTree>>;
 
+        public:
         /// @brief Create a new FileTree
         /// @param id id of this file
         /// @param parent parent file
-        FileTree(FileID id, std::shared_ptr<FileTree> parent);
-
-        ~FileTree() { }
+        FileTree(FileID id, std::shared_ptr<FileTree> parent, Version version = 0);
 
         /// @brief Get parent of this tree
         /// @return pointer to parent
         std::shared_ptr<FileTree> GetParent() const { return _parent; }
 
+        /// @brief Set new parent of this node
+        /// @param new_parent new parent to set
+        void SetParent(std::shared_ptr<FileTree> new_parent) { _parent = new_parent; }
+
         /// @brief Try to add this file as child of this file tree. Note that this function doesn't checks if file is dir or doc, 
         /// you have to ensure it yourself
         /// @param file file to add as child
-        void AddFile(std::shared_ptr<FileTree> file);
+        /// @param out_new_possible_parent New version parent if new root was created. Null if no new root is created.
+        /// @return new node if one was created during the update
+        std::shared_ptr<FileTree> AddFile(std::shared_ptr<FileTree> file, Version version, std::shared_ptr<FileTree>& out_possible_new_parent);
 
+        /// @brief Delete specified file from this node
+        /// @param file_id id of file to delete
         void RemoveFile(FileID file_id);
 
         /// @brief Return list of contained files
         /// @return files contained by this node
-        std::vector<std::shared_ptr<FileTree>> ContainedFiles() const;
+        std::vector<std::shared_ptr<FileTree>> ContainedFiles(Version version) const;
 
         /// @brief Checks if this file node contains the file specified by `id`
         /// @param id id of file to check if exists
         /// @return if this file tree contains the required file
         bool ContainsFile(FileID id);
 
+        /// @brief Get if of file refered by this node
+        /// @return 
         FileID GetFileID() const { return _file_id; }
 
         /// @brief Get how many children has this folder of the file tree
         /// @return amount of childs in first level of this file
         size_t GetNChilds() const { return _contained_files.size(); }
 
+        /// @brief Get version of this node
+        /// @return version of this node
+        Version GetVersion() const { return _version; }
+
+        /// @brief Set new childs of this file
+        /// @param childs new childs to updatre
+        void SetNewChilds(const ChildMap& childs) { _contained_files = childs; }
+
+        /// @brief Get reference to childs of this node
+        /// @return childs contained by this node
+        const ChildMap& GetChilds() const { return _contained_files; }
+
         private:
-        std::map<FileID, std::shared_ptr<FileTree>> _contained_files;
+        /// @brief This event is called whenever a new node is created due to change box 
+        /// already filled up. It will update parents up to the root, returning new root.
+        /// @param new_node Newly created node
+        /// @param old_file_id id of old node replaced by the new one
+        /// @return nullptr if didn't reach root, ptr to root if reached
+        std::shared_ptr<FileTree> NewNodeCreated(std::shared_ptr<FileTree> new_node, FileID old_file_id);
+
+        /// @brief Update file_id of this node. Return new node if new was created
+        /// @param new_file_id updated file id
+        /// @param version new version of this change
+        /// @return nullptr if no new node was created, ptr to newly created node otherwise
+        std::shared_ptr<FileTree> UpdateNode(FileID new_file_id, Version version, std::shared_ptr<FileTree>& out_new_version_parent);
+
+        /// @brief Update list of files of this node. Return new node if new was created
+        /// @param new_contained_files new list of files for this node
+        /// @param version new version of this change
+        /// @return nullptr if no new node was created, ptr to newly created node otherwise
+        std::shared_ptr<FileTree> UpdateNode(const ChildMap& new_contained_files, Version version, std::shared_ptr<FileTree>& out_new_version_parent);
+
+        private:
+        ChildMap _contained_files;
         std::shared_ptr<FileTree> _parent;
+        std::shared_ptr<FileTree> _change_box;
         FileID _file_id; // id of file containing actual data
+        Version _version;
+        
     };
 
     class FileSystem
@@ -142,10 +188,22 @@ namespace CELV
         /// @return Success status
         STATUS WriteFile(const std::string& filename,const std::string& content, std::string& out_error_msg);
 
+        /// @brief Try to change version to the specified version
+        /// @param version Version to change to
+        /// @param out_error_msg error message in case of error
+        /// @return Success status
+        STATUS SetVersion(Version version, std::string& out_error_msg);
+
+        /// @brief Get currently active version
+        /// @return currently active version
+        Version GetVersion() const { return _current_version; }
+
         private:
         std::vector<File> _files;
-        std::shared_ptr<FileTree> _file_tree;
         std::shared_ptr<FileTree> _working_dir;
+        std::vector<std::shared_ptr<FileTree>> _versions;
+        Version _current_version;
+        Version _next_available_version;
     };
 }
 

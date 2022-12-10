@@ -7,8 +7,6 @@
 
 namespace CELV
 {
-    using Version = std::string;
-
     class Client
     {
         public:

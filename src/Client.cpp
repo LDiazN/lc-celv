@@ -139,6 +139,11 @@ namespace CELV
             else 
                 std::cerr << "Missing argument for command: " << command << std::endl;
         }
+        else if (command == "celv_version")
+        {
+            auto version = _filesystem.GetVersion();
+            std::cout << version << std::endl;
+        }
         else if (command == "celv_fusion")
         {
             Version version1;
@@ -240,7 +245,9 @@ namespace CELV
 
     void Client::CELVGo(const Version& version)
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error_msg;
+        if (_filesystem.SetVersion(version, error_msg) == ERROR)
+            std::cerr << RED << error_msg << RESET << std::endl;
     }
 
     void Client::CELVFusion(const Version& version1, const Version& version2)
@@ -267,5 +274,6 @@ namespace CELV
         std::cout << "\t- celv_vamos version: cambia la version actual a la version especificada\n";
         std::cout << "\t- celv_fusion version1 version2: Trata de fusionar las dos versiones especificadas\n";
         std::cout << "\t- celv_importar camino_directorio: Imita la estructura de archivos del directorio especificado\n";
+        std::cout << "\t- celv_version: Retorna la version actualmente activa en el control de versiones\n";
     }
 }
