@@ -54,6 +54,22 @@ namespace CELV
         _contained_files.erase(file_id);
     }
 
+    std::shared_ptr<FileTree> FileTree::RemoveFile(FileID file_id, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent)
+    {
+        // Create a new map with corresponding childs
+        auto const& old_childs = GetChilds(current_version);
+        if (old_childs.find(file_id) == old_childs.end())
+            return nullptr; // If node does not contains the specified file, do nothing
+
+        ChildMap new_childs(old_childs);
+
+        // Erase corresponding node
+        new_childs.erase(file_id);
+
+        // Update node by deleting this
+        return UpdateNode(new_childs, current_version, new_version, out_possible_new_parent);
+    }
+
     std::vector<std::shared_ptr<FileTree>> FileTree::ContainedFiles(Version version) const
     {
         auto const& contained_files = UseChangeBox(version) ? _change_box->_contained_files :  _contained_files;
@@ -269,7 +285,19 @@ namespace CELV
             auto const file_id = file->GetFileID();
             if (_files[file_id].GetName() == filename)
             {
-                _working_dir->RemoveFile(file_id);
+
+                std::shared_ptr<FileTree> possible_new_version_parent = nullptr;
+                auto possible_new_node = _working_dir->RemoveFile(file_id, _current_version, _next_available_version, possible_new_version_parent);
+
+                if (possible_new_version_parent != nullptr)
+                    _versions.push_back(possible_new_version_parent);
+                else 
+                    _versions.push_back(_versions[_current_version]);
+
+                if (possible_new_node != nullptr)
+                    _working_dir = possible_new_node;
+
+                _current_version = _next_available_version++;
                 return SUCCESS;
             }
         }

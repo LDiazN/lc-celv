@@ -86,6 +86,14 @@ namespace CELV
         /// @brief Delete specified file from this node
         /// @param file_id id of file to delete
         void RemoveFile(FileID file_id);
+        
+        /// @brief Delete specified file from this node
+        /// @param file_id id of file to delete
+        /// @param current_version currently active version
+        /// @param new_version new version to mark for new nodes
+        /// @param out_new_possible_parent New version parent if new root was created. Null if no new root is created.
+        /// @return new node if one was created during the update
+        std::shared_ptr<FileTree> RemoveFile(FileID file_id, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent);
 
         /// @brief Return list of contained files
         /// @return files contained by this node
