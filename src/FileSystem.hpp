@@ -97,8 +97,13 @@ namespace CELV
         bool ContainsFile(FileID id);
 
         /// @brief Get if of file refered by this node
-        /// @return 
+        /// @return id of file refered by this node
         FileID GetFileID() const { return _file_id; }
+
+        /// @brief Get if of file refered by this node
+        /// @param version Query version
+        /// @return id of file refered by this node
+        FileID GetFileID(Version version) const { return UseChangeBox(version) ? _change_box->GetFileID() : _file_id; }
 
         /// @brief Get how many children has this folder of the file tree
         /// @return amount of childs in first level of this file
@@ -158,6 +163,8 @@ namespace CELV
         /// @brief List files in current directory
         /// @return List of files in current directory
         const std::vector<File> List() const;
+
+        std::string GetCurrentWorkingDirectory() const;
 
         /// @brief Try to change directory to a directory named `directory_name`. If not such directory, return error  
         /// @param directory_name Name of directory to change to

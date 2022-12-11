@@ -165,6 +165,13 @@ namespace CELV
         return files;
     }
 
+    std::string FileSystem::GetCurrentWorkingDirectory() const
+    {
+        assert(_working_dir != nullptr && "File tree is not initialized");
+        auto dir_id =  _working_dir->GetFileID(_current_version);
+        return _files[dir_id].GetName();
+    }
+
     STATUS FileSystem::ChangeDirectory(const std::string& directory_name, std::string& out_error_msg)
     {
         auto const& files = _working_dir->ContainedFiles(_current_version);
@@ -327,12 +334,11 @@ namespace CELV
         // exists in that version.
         // We traverse the filesystem tree up to the root to get the path required to go down again.
         std::stack<FileID> path_to_cwd;
-        path_to_cwd.push(_working_dir->GetFileID());
         auto next_dir = _working_dir;
         while (!next_dir->IsRoot())
         {
-            next_dir = next_dir->GetParent();
             path_to_cwd.push(next_dir->GetFileID());
+            next_dir = next_dir->GetParent();
         }
 
         _current_version = version;
