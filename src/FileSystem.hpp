@@ -73,12 +73,15 @@ namespace CELV
         /// @param new_parent new parent to set
         void SetParent(std::shared_ptr<FileTree> new_parent) { _parent = new_parent; }
 
+
         /// @brief Try to add this file as child of this file tree. Note that this function doesn't checks if file is dir or doc, 
         /// you have to ensure it yourself
         /// @param file file to add as child
+        /// @param current_version Current version to use, used to query which data to use next
+        /// @param new_version New version to mark in any newly modified node
         /// @param out_new_possible_parent New version parent if new root was created. Null if no new root is created.
         /// @return new node if one was created during the update
-        std::shared_ptr<FileTree> AddFile(std::shared_ptr<FileTree> file, Version version, std::shared_ptr<FileTree>& out_possible_new_parent);
+        std::shared_ptr<FileTree> AddFile(std::shared_ptr<FileTree> file, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent);
 
         /// @brief Delete specified file from this node
         /// @param file_id id of file to delete
@@ -114,18 +117,29 @@ namespace CELV
         const ChildMap& GetChilds(Version version ) const 
         { return _change_box != nullptr && version >= _change_box->GetVersion() ? _change_box->GetChilds(version) : _contained_files ; }
 
+        /// @brief If this node is a root node
+        /// @return true if this node is root, false otherwise
+        bool IsRoot() const { return _parent == nullptr; }
+
+        /// @brief Utility function to check if should use changebox data instead of regular data
+        /// @param version active version
+        /// @return true if should use change box, false otherwise
+        bool UseChangeBox(Version version) const { return _change_box != nullptr && _change_box->GetVersion() <= version; }
+
         private:
         /// @brief Update file_id of this node. Return new node if new was created
         /// @param new_file_id updated file id
-        /// @param version new version of this change
+        /// @param current_version Current version to use, used to query which data to use next
+        /// @param new_version New version to mark in any newly modified node
         /// @return nullptr if no new node was created, ptr to newly created node otherwise
-        std::shared_ptr<FileTree> UpdateNode(FileID new_file_id, Version version, std::shared_ptr<FileTree>& out_new_version_parent); // escribir
+        std::shared_ptr<FileTree> UpdateNode(FileID new_file_id, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_new_version_parent); // escribir
 
         /// @brief Update list of files of this node. Return new node if new was created
         /// @param new_contained_files new list of files for this node
-        /// @param version new version of this change
+        /// @param current_version Current version to use, used to query which data to use next
+        /// @param new_version New version to mark in any newly modified node
         /// @return nullptr if no new node was created, ptr to newly created node otherwise
-        std::shared_ptr<FileTree> UpdateNode(const ChildMap& new_contained_files, Version version, std::shared_ptr<FileTree>& out_new_version_parent); // operacion de directorio
+        std::shared_ptr<FileTree> UpdateNode(const ChildMap& new_contained_files,Version current_version, Version new_version, std::shared_ptr<FileTree>& out_new_version_parent); // operacion de directorio
 
         private:
         ChildMap _contained_files;

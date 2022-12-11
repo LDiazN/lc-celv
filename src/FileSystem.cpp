@@ -1,6 +1,7 @@
 
 #include "FileSystem.hpp"
 #include "assert.h"
+#include <stack>
 
 namespace CELV
 {
@@ -41,11 +42,11 @@ namespace CELV
         , _version(version)
     { }
 
-    std::shared_ptr<FileTree> FileTree::AddFile(std::shared_ptr<FileTree> file, Version version, std::shared_ptr<FileTree>& out_possible_new_parent)
+    std::shared_ptr<FileTree> FileTree::AddFile(std::shared_ptr<FileTree> file, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent)
     {
-        ChildMap new_contained(GetChilds(version));
+        ChildMap new_contained(GetChilds(current_version));
         new_contained[file->GetFileID()] = file;
-        return UpdateNode(new_contained, version, out_possible_new_parent);
+        return UpdateNode(new_contained, current_version, new_version, out_possible_new_parent);
     }
 
     void FileTree::RemoveFile(FileID file_id)
@@ -55,7 +56,7 @@ namespace CELV
 
     std::vector<std::shared_ptr<FileTree>> FileTree::ContainedFiles(Version version) const
     {
-        auto const& contained_files = _change_box != nullptr && _change_box->GetVersion() <= version ? _change_box->_contained_files :  _contained_files;
+        auto const& contained_files = UseChangeBox(version) ? _change_box->_contained_files :  _contained_files;
 
         std::vector<std::shared_ptr<FileTree>> files(contained_files.size());
         size_t i = 0;
@@ -70,18 +71,18 @@ namespace CELV
         return _contained_files.find(id) != _contained_files.end();
     }
 
-    std::shared_ptr<FileTree> FileTree::UpdateNode(FileID new_file_id, Version version, std::shared_ptr<FileTree>& out_new_version_parent)
+    std::shared_ptr<FileTree> FileTree::UpdateNode(FileID new_file_id, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_new_version_parent)
     {
         // If changebox is empty, update it and and return nothing
         if (_change_box == nullptr)
         {
-            _change_box = std::make_shared<FileTree>(new_file_id, _parent, version);
+            _change_box = std::make_shared<FileTree>(new_file_id, _parent, new_version);
             _change_box->SetNewChilds(_contained_files);
             return nullptr;
         }
 
         // If changebox if full, we need to create a new node
-        auto new_node = std::make_shared<FileTree>(new_file_id, nullptr, version);
+        auto new_node = std::make_shared<FileTree>(new_file_id, nullptr, new_version);
         // Update parent for this node
         if (_parent == nullptr)
         {   
@@ -90,10 +91,10 @@ namespace CELV
             return new_node;
         }
 
-        auto parent_childs(_parent->GetChilds(version));
+        auto parent_childs(_parent->GetChilds(current_version));
         parent_childs.erase(_file_id);
         parent_childs[new_file_id] = new_node;
-        auto possible_new_parent = _parent->UpdateNode(parent_childs, version, out_new_version_parent);
+        auto possible_new_parent = _parent->UpdateNode(parent_childs, current_version,new_version, out_new_version_parent);
 
         if (possible_new_parent == nullptr)
             new_node->SetParent(_parent);
@@ -101,23 +102,23 @@ namespace CELV
             new_node->SetParent(possible_new_parent);
 
         // Update childs of this node as childs of change box, the newest version 
-        new_node->SetNewChilds(_change_box->GetChilds(version));
+        new_node->SetNewChilds(_change_box->GetChilds(current_version));
 
         return new_node;
     }
         
-    std::shared_ptr<FileTree> FileTree::UpdateNode(const ChildMap& new_contained_files, Version version, std::shared_ptr<FileTree>& out_new_version_parent)
+    std::shared_ptr<FileTree> FileTree::UpdateNode(const ChildMap& new_contained_files, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_new_version_parent)
     {
         // If changebox is empty, update it and and return nothing
         if (_change_box == nullptr)
         {
-            _change_box = std::make_shared<FileTree>(_file_id, _parent, version);
+            _change_box = std::make_shared<FileTree>(_file_id, _parent, new_version);
             _change_box->SetNewChilds(new_contained_files);
             return nullptr;
         }
 
         // If changebox if full, we need to create a new node
-        auto new_node = std::make_shared<FileTree>(_file_id, nullptr, version);
+        auto new_node = std::make_shared<FileTree>(_file_id, nullptr, new_version);
         new_node->SetNewChilds(new_contained_files);
 
         // Update parent for this node
@@ -128,9 +129,9 @@ namespace CELV
             return new_node;
         }
 
-        auto parent_childs(_parent->GetChilds(version));
+        auto parent_childs(_parent->GetChilds(current_version));
         parent_childs[_file_id] = new_node;
-        auto possible_new_parent = _parent->UpdateNode(parent_childs, version, out_new_version_parent);
+        auto possible_new_parent = _parent->UpdateNode(parent_childs, current_version, new_version, out_new_version_parent);
 
         if (possible_new_parent == nullptr)
             new_node->SetParent(_parent);
@@ -237,7 +238,7 @@ namespace CELV
         // Note that adding a new file means that the version root might be new 
         // and that a new version of current working dir could be created
         std::shared_ptr<FileTree> possible_new_version_parent = nullptr;
-        auto possible_new_node = _working_dir->AddFile(std::make_shared<FileTree>(new_file_id, _working_dir), _next_available_version, possible_new_version_parent);
+        auto possible_new_node = _working_dir->AddFile(std::make_shared<FileTree>(new_file_id, _working_dir), _current_version, _next_available_version, possible_new_version_parent);
 
         // Update version root
         if (possible_new_version_parent != nullptr) // if a new root is created, added to version control
@@ -322,7 +323,38 @@ namespace CELV
             return ERROR;
         }
 
+        // When changing versions, we first need to check if the working directory is one that 
+        // exists in that version.
+        // We traverse the filesystem tree up to the root to get the path required to go down again.
+        std::stack<FileID> path_to_cwd;
+        path_to_cwd.push(_working_dir->GetFileID());
+        auto next_dir = _working_dir;
+        while (!next_dir->IsRoot())
+        {
+            next_dir = next_dir->GetParent();
+            path_to_cwd.push(next_dir->GetFileID());
+        }
+
         _current_version = version;
+        next_dir = _versions[version];
+        while(!path_to_cwd.empty())
+        {
+            // Get id of next folder to advance
+            auto next_dir_id = path_to_cwd.top();
+            path_to_cwd.pop();
+            
+            auto const &childs = next_dir->GetChilds(version);
+            // If this folder does not contains the directory we're looking for, 
+            // we end this
+            auto possible_dir = childs.find(next_dir_id);
+            if (possible_dir == childs.end())
+                break;
+            
+            // If we found it, set the next dir as this dir
+            next_dir = (*possible_dir).second;
+        }
+
+        _working_dir = next_dir;
         return SUCCESS;
     }
 }
