@@ -56,6 +56,7 @@ namespace CELV
     class FileTree
     {
         public:
+        // typedef ChildMap = ...
         using ChildMap = std::map<FileID, std::shared_ptr<FileTree>>;
 
         public:
@@ -114,24 +115,17 @@ namespace CELV
         { return _change_box != nullptr && version >= _change_box->GetVersion() ? _change_box->GetChilds(version) : _contained_files ; }
 
         private:
-        /// @brief This event is called whenever a new node is created due to change box 
-        /// already filled up. It will update parents up to the root, returning new root.
-        /// @param new_node Newly created node
-        /// @param old_file_id id of old node replaced by the new one
-        /// @return nullptr if didn't reach root, ptr to root if reached
-        std::shared_ptr<FileTree> NewNodeCreated(std::shared_ptr<FileTree> new_node, FileID old_file_id);
-
         /// @brief Update file_id of this node. Return new node if new was created
         /// @param new_file_id updated file id
         /// @param version new version of this change
         /// @return nullptr if no new node was created, ptr to newly created node otherwise
-        std::shared_ptr<FileTree> UpdateNode(FileID new_file_id, Version version, std::shared_ptr<FileTree>& out_new_version_parent);
+        std::shared_ptr<FileTree> UpdateNode(FileID new_file_id, Version version, std::shared_ptr<FileTree>& out_new_version_parent); // escribir
 
         /// @brief Update list of files of this node. Return new node if new was created
         /// @param new_contained_files new list of files for this node
         /// @param version new version of this change
         /// @return nullptr if no new node was created, ptr to newly created node otherwise
-        std::shared_ptr<FileTree> UpdateNode(const ChildMap& new_contained_files, Version version, std::shared_ptr<FileTree>& out_new_version_parent);
+        std::shared_ptr<FileTree> UpdateNode(const ChildMap& new_contained_files, Version version, std::shared_ptr<FileTree>& out_new_version_parent); // operacion de directorio
 
         private:
         ChildMap _contained_files;
@@ -202,6 +196,7 @@ namespace CELV
         private:
         std::vector<File> _files;
         std::shared_ptr<FileTree> _working_dir;
+        // Array of version roots
         std::vector<std::shared_ptr<FileTree>> _versions;
         Version _current_version;
         Version _next_available_version;

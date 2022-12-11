@@ -43,7 +43,7 @@ namespace CELV
 
     std::shared_ptr<FileTree> FileTree::AddFile(std::shared_ptr<FileTree> file, Version version, std::shared_ptr<FileTree>& out_possible_new_parent)
     {
-        ChildMap new_contained(_contained_files);
+        ChildMap new_contained(GetChilds(version));
         new_contained[file->GetFileID()] = file;
         return UpdateNode(new_contained, version, out_possible_new_parent);
     }
@@ -325,5 +325,4 @@ namespace CELV
         _current_version = version;
         return SUCCESS;
     }
-
 }
