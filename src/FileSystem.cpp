@@ -70,6 +70,24 @@ namespace CELV
         return UpdateNode(new_childs, current_version, new_version, out_possible_new_parent);
     }
 
+    std::shared_ptr<FileTree> FileTree::ReplaceFileId(FileID old_file_id, FileID new_file_id, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent)
+    {
+        auto const& old_childs = GetChilds(current_version);
+        auto const& possible_old_child = old_childs.find(old_file_id);
+
+        if (old_childs.find(old_file_id) == old_childs.end())
+            return nullptr; // Nothing to do if nothing to replace
+
+        ChildMap new_childs(old_childs);
+        new_childs.erase(old_file_id);
+
+        auto const& old_node = (*possible_old_child).second;
+        auto const new_node = std::make_shared<FileTree>(new_file_id, old_node->GetParent(), new_version);
+        new_childs[new_file_id] = new_node;
+
+        return UpdateNode(new_childs, current_version, new_version, out_possible_new_parent);
+    }
+
     std::vector<std::shared_ptr<FileTree>> FileTree::ContainedFiles(Version version) const
     {
         auto const& contained_files = UseChangeBox(version) ? _change_box->_contained_files :  _contained_files;
@@ -336,7 +354,23 @@ namespace CELV
             bool name_match = _files[file_id].GetName() == filename;
             if (name_match && _files[file_id].GetFileType() == FileType::DOCUMENT)
             {
-                _files[file_id].SetContent(content);
+                auto const& file = _files[file_id];
+                auto const new_file_id = _files.size();
+                _files.emplace_back(file.GetName(), new_file_id, content);
+
+                std::shared_ptr<FileTree> possible_new_parent = nullptr;
+                auto const possible_new_cwd = _working_dir->ReplaceFileId(file_id, new_file_id, _current_version, _next_available_version, possible_new_parent);
+
+                if (possible_new_parent != nullptr)
+                    _versions.push_back(possible_new_parent);
+                else
+                    _versions.push_back(_versions[_current_version]);
+                
+                if (possible_new_cwd != nullptr)
+                    _working_dir = possible_new_cwd;
+
+                _current_version = _next_available_version++;
+
                 return SUCCESS;
             }
             else if (name_match)

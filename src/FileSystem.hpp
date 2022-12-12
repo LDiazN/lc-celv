@@ -73,7 +73,6 @@ namespace CELV
         /// @param new_parent new parent to set
         void SetParent(std::shared_ptr<FileTree> new_parent) { _parent = new_parent; }
 
-
         /// @brief Try to add this file as child of this file tree. Note that this function doesn't checks if file is dir or doc, 
         /// you have to ensure it yourself
         /// @param file file to add as child
@@ -94,6 +93,15 @@ namespace CELV
         /// @param out_new_possible_parent New version parent if new root was created. Null if no new root is created.
         /// @return new node if one was created during the update
         std::shared_ptr<FileTree> RemoveFile(FileID file_id, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent);
+
+        /// @brief replace a file with id `old_file_id` with a new file with id `new_file_id`
+        /// @param old_file_id id of old file to be replaced
+        /// @param new_file_id new id replacing old id
+        /// @param current_version currently active version
+        /// @param new_version new version to mark in each newly created node
+        /// @param out_possible_new_parent possible new root parent if one was created
+        /// @return possible new version of this node if one was created
+        std::shared_ptr<FileTree> ReplaceFileId(FileID old_file_id, FileID new_file_id, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent);
 
         /// @brief Return list of contained files
         /// @return files contained by this node
@@ -128,7 +136,7 @@ namespace CELV
         /// @brief Get reference to childs of this node
         /// @return childs contained by this node
         const ChildMap& GetChilds(Version version ) const 
-        { return _change_box != nullptr && version >= _change_box->GetVersion() ? _change_box->GetChilds(version) : _contained_files ; }
+        { return UseChangeBox(version) ? _change_box->GetChilds(version) : _contained_files ; }
 
         /// @brief If this node is a root node
         /// @return true if this node is root, false otherwise
