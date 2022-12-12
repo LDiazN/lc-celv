@@ -2,6 +2,9 @@
 #include "FileSystem.hpp"
 #include "assert.h"
 #include <stack>
+#include <sstream>
+#include <string>
+#include "Core.hpp"
 
 namespace CELV
 {
@@ -175,14 +178,57 @@ namespace CELV
         return new_node;
     }
 
+    std::string Action::Str() const
+    {
+        std::stringstream ss;
+        ss  << MAGENTA << "[ " << origin_version << BLUE << " -> " << MAGENTA << new_version << " ]" << std::endl;
+        ss << "\t" << YELLOW;
+        switch (type)
+        {
+        case ActionType::WRITE :
+            ss << "escribir ";
+            break;
+        case ActionType::CREATE_DIR: 
+            ss << "crear_dir";
+            break;
+        case ActionType::CREATE_DOC:
+            ss << "crear_archivo";
+            break;
+        case ActionType::REMOVE:
+            ss << "eliminar";
+            break;
+        case ActionType::MERGE:
+            ss << "celv_fusion";
+            break;
+        default:
+            break;
+        }
+
+        ss << RESET << " ";
+
+        for(auto const& arg : args)
+        {
+            if (arg.size() <= 23)
+            {
+                ss << arg << " ";
+                continue;
+            }
+
+                ss << arg.substr(0, 10);
+                ss << "...";
+                ss << arg.substr(arg.size() - 10);
+        }
+        return ss.str();
+    }
+
     FileSystem::FileSystem()
         : _files()
     { 
-        _current_version = 0;
-        _next_available_version = 1;
-        _versions.push_back(std::make_shared<FileTree>(0, nullptr, _current_version));
-        _working_dir = _versions[_current_version];
-        _files.emplace_back("/", 0);
+        _current_version = 0; // initial version
+        _next_available_version = 1; // next possible version
+        _versions.push_back(std::make_shared<FileTree>(0, nullptr, _current_version)); // create an original version
+        _working_dir = _versions[_current_version]; // set working dir as root of only version available
+        _files.emplace_back("/", 0); // root dir is /
     }
 
     const std::vector<File> FileSystem::List() const
@@ -291,6 +337,16 @@ namespace CELV
         if (possible_new_node != nullptr)
             _working_dir = possible_new_node;
 
+        
+        //Register this action
+        PushAction(Action
+            { 
+                type == FileType::DOCUMENT ? ActionType::CREATE_DOC : ActionType::CREATE_DIR, 
+                {filename}, 
+                _current_version, 
+                _next_available_version
+            });
+
         _current_version = _next_available_version++;
         
         return SUCCESS;
@@ -314,6 +370,9 @@ namespace CELV
 
                 if (possible_new_node != nullptr)
                     _working_dir = possible_new_node;
+
+                //Register this action
+                PushAction(Action{ActionType::REMOVE, {filename}, _current_version, _next_available_version});
 
                 _current_version = _next_available_version++;
                 return SUCCESS;
@@ -368,6 +427,9 @@ namespace CELV
                 
                 if (possible_new_cwd != nullptr)
                     _working_dir = possible_new_cwd;
+
+                //Register this action
+                PushAction(Action{ActionType::WRITE, {filename, content}, _current_version, _next_available_version});
 
                 _current_version = _next_available_version++;
 

@@ -171,6 +171,32 @@ namespace CELV
         
     };
 
+    /// @brief Possible action types performed by the client
+    enum class ActionType
+    {
+        WRITE,
+        REMOVE,
+        CREATE_DIR,
+        CREATE_DOC,
+        MERGE
+    };
+
+    using ActionArgs = std::vector<std::string>;
+
+    /// @brief Struct representing data for an action
+    struct Action
+    {
+        ActionType type;
+        ActionArgs args;
+        Version origin_version;
+        Version new_version;
+
+        public:
+        /// @brief Return a string representation of this object
+        /// @return String representing this action
+        std::string Str() const;
+    };
+
     class FileSystem
     {
         public:
@@ -230,6 +256,15 @@ namespace CELV
         /// @return currently active version
         Version GetVersion() const { return _current_version; }
 
+        /// @brief Get the history of actions taken so far
+        /// @return List of actions in execution order
+        const std::vector<Action>& GetHistory() const { return _history; }
+
+        private:
+        /// @brief Push an action when performing some operation
+        /// @param action action to push
+        void PushAction(const Action& action) { _history.push_back(action); }
+
         private:
         std::vector<File> _files;
         std::shared_ptr<FileTree> _working_dir;
@@ -237,6 +272,7 @@ namespace CELV
         std::vector<std::shared_ptr<FileTree>> _versions;
         Version _current_version;
         Version _next_available_version;
+        std::vector<Action> _history;
     };
 }
 

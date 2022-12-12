@@ -240,7 +240,9 @@ namespace CELV
 
     void Client::CELVHistory()
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        auto const& actions = _filesystem.GetHistory();
+        for (auto const& action : actions)
+            std::cout << action.Str() << std::endl;
     }
 
     void Client::CELVGo(const Version& version)
