@@ -147,6 +147,9 @@ namespace CELV
         /// @return true if should use change box, false otherwise
         bool UseChangeBox(Version version) const { return _change_box != nullptr && _change_box->GetVersion() <= version; }
 
+        /// @brief Destroy this tree and all its children
+        void Destroy();
+
         private:
         /// @brief Update file_id of this node. Return new node if new was created
         /// @param new_file_id updated file id
@@ -259,6 +262,9 @@ namespace CELV
         /// @brief Get the history of actions taken so far
         /// @return List of actions in execution order
         const std::vector<Action>& GetHistory() const { return _history; }
+
+        /// @brief Destroy all data stored in this object
+        void Destroy();
 
         private:
         /// @brief Push an action when performing some operation

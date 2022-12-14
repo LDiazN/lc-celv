@@ -12,6 +12,8 @@ namespace CELV
         public:
             Client();
 
+            ~Client() { _filesystem.Destroy(); }
+
             // -- < Filesystem API > ------------------------------------------------------------------------------------------
 
             /// @brief Try to create a directory and report error if not possible

@@ -108,6 +108,23 @@ namespace CELV
         return _contained_files.find(id) != _contained_files.end();
     }
 
+    void FileTree::Destroy()
+    {
+        // Set every pointer to null recursively
+        _parent = nullptr;
+        for (auto &[k, child] : _contained_files)
+        {
+            child->Destroy();
+            _contained_files[k] = nullptr; // break all references to this child
+        }
+
+        if (_change_box != nullptr)
+        {
+            _change_box->Destroy();
+            _change_box = nullptr; // break reference tu change_box
+        }
+    }
+
     std::shared_ptr<FileTree> FileTree::UpdateNode(FileID new_file_id, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_new_version_parent)
     {
         // If changebox is empty, update it and and return nothing
@@ -486,5 +503,15 @@ namespace CELV
 
         _working_dir = next_dir;
         return SUCCESS;
+    }
+
+    void FileSystem::Destroy()
+    {
+        for (auto &version : _versions)
+            version->Destroy();
+        _versions.clear();
+        _files.clear();
+        _history.clear();
+        _working_dir = nullptr;
     }
 }
