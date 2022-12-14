@@ -1,214 +1,182 @@
 #include<stdio.h>
 #include<iostream> 
-#include<vector>
-#include<queue> 
 #include<algorithm> 
+#include<cassert>
+#include<sstream>
+#include<stdexcept>
 
-using namespace std; 
+#include"Diff.hpp"
 
-// TODO fix error in produce_diff
-// TODO check empty string
-// TODO throw on invalid enum case
-// TODO mejorar appends
-// TODO add hpp
-// TODO  remove std
-// TODO arrange visibility
+DIFF::DIFF(const std::string &u, const std::string &v) 
+        : _A(u)
+        , _B(v)
+        , _memo(u.size() + 1) 
+{
+    assert( (u.size() > 0 || v.size() > 0) && "Both strings are empty!");
 
-//GC
+    // Initialize table size
+    for (size_t i=0; i<_memo.size(); ++i)
+        _memo[i].resize(_B.size() + 1);
+}
 
-enum STATE { INSERT, DELETE, MODIFY, NOTHING };
+std::string DIFF::compute_diff() 
+{
+    // Precalcula la edist para recuperar camino
+    edist_pdist();
 
-struct CELL { 
-    int i, j, best; 
-    STATE state; 
-};
+    // Recupera el camino
+    return produce_diff();
+}
 
-class DIFF {
-public:
-    vector<vector<CELL>> memo;
-    string A, B; 
+int DIFF::edist_pdist() 
+{
+    // Esquina superior izquierda actua como caso base 
+    _memo[0][0] = CELL{0, 0, 0, NOTHING};
 
-    DIFF(const string &u, const string &v) : A(u), B(v), memo(u.size()) {
-        // Initialize table size
-        for (int i=0; i<memo.size(); ++i)
-            memo[i].resize(B.size());
-    }
+    // Inicializa tabla _memo con casos bases 
+    for (int i=1; i<=static_cast<int>(_A.size()); ++i)
+        _memo[i][0] = CELL{i-1, 0, 1 + _memo[i-1][0].best, DELETE};
 
-    void diff() {
-        // Precalcula la edist para recuperar camino
-        edist();
-        string TMP;
+    for (int i=1; i<=static_cast<int>(_B.size()); ++i)
+        _memo[0][i] = CELL{0, i-1, 1 + _memo[0][i-1].best, INSERT};
 
-        // recupera el camino
-        produce_diff(TMP);
-        cout<<TMP<<'\n';
-    }
-
-    int edist() {
-        // Set edist for base cases
-        for (int i=0; i<A.size(); ++i)
-            memo[i][0] = CELL{0, 0, i, DELETE};
-        for (int i=1; i<B.size(); ++i)
-            memo[0][i] = CELL{0, 0, i, INSERT};
-
-        for (int i=1; i<A.size(); ++i)
-            for (int j=1; j<B.size(); ++j)
-                if (A[i] == B[j])
-                    memo[i][j] = CELL{i - 1,j - 1, memo[i-1][j-1].best, NOTHING};
+    for (int i=1; i<=static_cast<int>(_A.size()); ++i)
+        for (int j=1; j<=static_cast<int>(_B.size()); ++j)
+            if (_A[i - 1] == _B[j - 1]) 
+                _memo[i][j] = CELL{i - 1,j - 1, _memo[i - 1][j - 1].best, NOTHING};
+            else 
+            {
+                if (_memo[i][j - 1].best < _memo[i - 1][j].best) 
+                {
+                    if (_memo[i][j - 1].best < _memo[i - 1][j - 1].best)  // Insertion case 
+                        _memo[i][j] = CELL{i, j-1, 1 + _memo[i][j - 1].best, INSERT}; 
+                    else  // Modifying case 
+                        _memo[i][j] = CELL{i - 1, j - 1,1 + _memo[i - 1][j - 1].best, MODIFY};
+                }
                 else 
                 {
-                    if (memo[i][j-1].best < memo[i-1][j].best) 
-                    {
-                        if (memo[i][j-1].best < memo[i-1][j-1].best)  // ! ADDING TO A
-                            memo[i][j] = CELL{i, j-1, 1 + memo[i][j-1].best, INSERT};
-                        else  // ! MODIFYING
-                            memo[i][j] = CELL{i-1, j-1,1 + memo[i-1][j-1].best, MODIFY};
-                    }
-                    else 
-                    {
-                        if (memo[i-1][j].best < memo[i-1][j-1].best)  // ! DELETING FROM A
-                            memo[i][j] = CELL{i-1, j, 1 + memo[i-1][j].best, DELETE};
-                        else  // ! MODIFYING
-                            memo[i][j] = CELL{i-1, j-1, 1 + memo[i-1][j-1].best, MODIFY};
-                    }
+                    if (_memo[i - 1][j].best < _memo[i - 1][j - 1].best) // Deletion case 
+                        _memo[i][j] = CELL{i - 1, j, 1 + _memo[i - 1][j].best, DELETE};
+                    else  // Modifying case
+                        _memo[i][j] = CELL{i - 1, j - 1, 1 + _memo[i - 1][j - 1].best, MODIFY};
                 }
-
-        return memo[A.size()-1][B.size()-1].best;
-    }
-
-    void DBG() {
-        cout<<"Edist between "<<A<<" and "<<B<<" is: "<<edist()<<'\n';
-
-        for (auto row : memo)
-        {
-            for (auto cell : row)
-                printf(" %d %d (%d) %d |", cell.i, cell.j, cell.best, cell.state);
-            printf("\n");
-        }
-
-        navigate_ancestors(A.size()-1, B.size()-1); printf("\n");
-    }
-
-    void produce_diff(string &result_string) {
-        int u = A.size() - 1, v = B.size() - 1;
-        STATE current_state = memo[u][v].state;
-
-        while (memo[u][v].i != u || memo[u][v].j != v ) // while not in root
-        { 
-
-            switch (current_state) {
-                case INSERT:
-                {
-                    bool tmp = true;
-                    // ! suffix
-                    result_string.append("}}");
-                    while (memo[u][v].state == current_state) // ! while state is the same
-                    {
-                        result_string.push_back(B[v]); 
-                        u = memo[u][v].i; v = memo[u][v].j;
-
-                        if (memo[u][v].i == u && memo[u][v].j == v)
-                            if (tmp)
-                                tmp = false;
-                            else
-                                break;
-                    } 
-                    // ! preffix
-                    result_string.append("{{");
-                    break;
-                }
-                case DELETE:
-                {
-                    bool tmp = true;
-                    result_string.append("]]");
-                    while (memo[u][v].state == current_state )
-                    {
-                        result_string.push_back(A[u]); 
-                        u = memo[u][v].i; v = memo[u][v].j;
-
-                        if (memo[u][v].i == u && memo[u][v].j == v)
-                            if (tmp)
-                                tmp = false;
-                            else 
-                                break;
-                    }
-                    result_string.append("[[");
-                    break;
-                }
-                case MODIFY:
-                {
-                    bool tmp = true;
-                    result_string.append("}}");
-                    string TEMP("]]");
-                    while (memo[u][v].state == current_state  )
-                    {
-                        result_string.push_back(B[v]); TEMP.push_back(A[u]); 
-                        u = memo[u][v].i; v = memo[u][v].j;
-                        if (memo[u][v].i == u && memo[u][v].j == v)
-                            if (tmp)
-                                tmp = false;
-                            else
-                                break;
-                    }
-                    TEMP.append("[[");
-                    result_string.append("{{");
-                    result_string.append(TEMP);
-                    break;
-                }
-                case NOTHING:
-                {
-                    bool tmp = true;
-                    while (memo[u][v].state == current_state) 
-                    {
-                        result_string.push_back(A[u]);
-                        u = memo[u][v].i; v = memo[u][v].j;
-                        if (memo[u][v].i == u && memo[u][v].j == v)
-                            if (tmp)
-                                tmp = false;
-                            else
-                                break;
-                    }
-                    break;
-                }
-                default:
-                    printf("ERROR!"); // !OJO throw exept
-                    break;
             }
 
-            current_state = memo[u][v].state;
+    return _memo[_A.size()][_B.size()].best;
+}
 
-        }
+std::string DIFF::produce_diff() 
+{
+    int u = _A.size() , v = _B.size() ;
+    STATE current_state = _memo[u][v].state;
+    std::stringstream ss;
 
-        reverse(result_string.begin(), result_string.end());
-    }
-
-    void navigate_ancestors(int u, int v) {
-        if (memo[u][v].i != u || memo[u][v].j != v) 
-        {
-            navigate_ancestors(memo[u][v].i, memo[u][v].j);
-            switch (memo[u][v].state) {
-                case INSERT:
-                    printf("INSERT ");
-                    break;
-                case DELETE:
-                    printf("DELETE ");
-                    break;
-                case MODIFY:
-                    printf("MODIFY ");
-                    break;
-                case NOTHING:
-                    printf("NOTHING ");
-                    break;
+    while (_memo[u][v].i != u || _memo[u][v].j != v) // Mientras no sea el caso base de la tabla 
+    { 
+        switch (current_state) {
+            case INSERT:
+            {
+                ss << CLOSING_NEW_VER;
+                while (_memo[u][v].state == current_state && (_memo[u][v].i != u || _memo[u][v].j != v)) 
+                {
+                    ss << _B[v-1]; 
+                    u = _memo[u][v].i; v = _memo[u][v].j;
+                } 
+                ss << OPENING_NEW_VER;
+                break;
             }
+            case DELETE:
+            {
+                ss << CLOSING_OLD_VER;
+                while (_memo[u][v].state == current_state && (_memo[u][v].i != u || _memo[u][v].j != v))
+                {
+                    ss << _A[u-1]; 
+                    u = _memo[u][v].i; v = _memo[u][v].j;
+                }
+                ss << OPENING_OLD_VER;
+                break;
+            }
+            case MODIFY:
+            {
+                ss << CLOSING_NEW_VER;
+
+                std::stringstream temp_ss;
+                temp_ss << CLOSING_OLD_VER;
+                while (_memo[u][v].state == current_state && (_memo[u][v].i != u || _memo[u][v].j != v))
+                {
+                    ss << _B[v-1]; 
+                    temp_ss << _A[u-1]; 
+                    u = _memo[u][v].i; v = _memo[u][v].j;
+                }
+                temp_ss << OPENING_OLD_VER;
+                ss << OPENING_NEW_VER;
+                ss << temp_ss.str();
+                break;
+            }
+            case NOTHING:
+            {
+                while (_memo[u][v].state == current_state &&  (_memo[u][v].i != u || _memo[u][v].j != v)) 
+                {
+                    ss << _A[u-1];
+                    u = _memo[u][v].i; v = _memo[u][v].j;
+                }
+                break;
+            }
+            default:
+                throw std::range_error("Invalid value for ennumeration.");
+                break;
         }
+
+        // Actualiza estado
+        current_state = _memo[u][v].state;
+
+    }
+    
+    // Dado que el std::string se produjo en orden inverso, se invierte
+    std::string result(ss.str());
+    reverse(result.begin(), result.end());
+    return result;
+}
+
+void DIFF::DBG() 
+{
+    std::cout<<"Edist between "<<_A<<" and "<<_B<<" is: "<<edist_pdist()<<'\n';
+
+    for (int i=0; i<static_cast<int>(_memo[0].size()); ++i)
+        printf("          %d ", i);
+    printf("\n");
+
+    for (int i=0; i<static_cast<int>(_memo.size()); ++i)
+    {
+        for (int j=0; j<static_cast<int>(_memo[i].size()); ++j)
+        {
+            if (j == 0)
+                printf("%d:", i);
+            printf(" %d %d (%d) %d |", _memo[i][j].i, _memo[i][j].j, _memo[i][j].best, _memo[i][j].state);
+        }
+        printf("\n");
     }
 
-};
+    printf("Sequence of instructions: "); navigate_ancestors(_A.size()-1, _B.size()-1); printf("\n");
+}
 
-int main() { 
-    string A,B;
-    getline(cin, A);
-    getline(cin, B);
-    struct DIFF solve(A,B);
-    solve.diff();
+void DIFF::navigate_ancestors(int u, int v) 
+{
+    if (_memo[u][v].i != u || _memo[u][v].j != v) 
+        navigate_ancestors(_memo[u][v].i, _memo[u][v].j);
+    switch (_memo[u][v].state) {
+        case INSERT:
+            printf("INSERT %c -> ",_B[v]);
+            break;
+        case DELETE:
+            printf("DELETE %c -> ",_A[u]);
+            break;
+        case MODIFY:
+        printf("MODIFY %c => %c -> ", _A[u], _B[v]);
+            break;
+        case NOTHING:
+            printf("NOTHING %c -> ",_A[u]);
+            break;
+    }
+
 }
