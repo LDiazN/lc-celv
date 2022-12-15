@@ -252,6 +252,8 @@ namespace CELV
         /// @return Success status
         STATUS SetVersion(Version version, std::string& out_error_msg);
 
+        STATUS MergeVersions(Version src, Version dst, std::string &out_error_msg);
+
         /// @brief Get currently active version
         /// @return currently active version
         Version GetVersion() const { return _current_version; }

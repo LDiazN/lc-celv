@@ -2,6 +2,8 @@
 #include "FileSystem.hpp"
 #include "assert.h"
 #include <stack>
+#include <queue>
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include "Core.hpp"
@@ -485,6 +487,95 @@ namespace CELV
         }
 
         _working_dir = next_dir;
+        return SUCCESS;
+    }
+
+    STATUS FileSystem::MergeVersions(Version src, Version dst, std::string &out_error_msg)
+    {
+
+        struct COMPARE {
+            // ! Aqui seguro hay peo de scope por usar _files
+            bool operator()(std::shared_ptr<FileTree> &a, std::shared_ptr<FileTree> &b) 
+            {
+                const auto &l_content = _files[ a->_file_id ];
+                const auto &r_content = _files[ b->_file_id ];
+                
+                // If types are the same, order alphanumerically
+                if (l_content._type == r_content._type)
+                    return l_content.name < r_content.name;
+
+                // Otherwise, regular files go first    
+                return l_content._type == DOCUMENT;
+            }
+
+        } comparison;
+
+        if (src == dst)
+        {
+            out_error_msg = "Versions to merge must differ.";
+            return ERROR;
+        }
+
+        // Set tracking of version to parent of maximum. Just by choice
+        _versions[ _next_available_version++ ] = src > dst ? _versions[src] : _versions[dst]; 
+
+        // Queue to move over common directories in a bredth traversal
+        std::queue< std::pair<std::shared_ptr<FileTree> , std::shared_ptr<FileTree> > > next_visit;
+        
+        next_visit.push( make_pair(_versions[src], _versions[dst]) );
+        while (!next_visit.empty()) 
+        {
+            const auto &current_comp_dir =  next_visit.front();
+            next_visit.pop();
+
+            // Consider files from directory (adjacents)
+            auto l_files = current_comp_dir.first->ContainedFiles(src);
+            auto r_files = current_comp_dir.second->ContainedFiles(dst);
+
+            // Here sort adyacents of both directories by name alphanumerically
+            sort(l_files.begin(), l_files.end(), [&](const auto &a, const auto &b){
+                const auto &l_content = _files[ a->GetFileId(src) ];
+                const auto &r_content = _files[ b->GetFileId(dst) ];
+                
+                // If types are the same, order alphanumerically
+                if (l_content.GetFileType() == r_content.GetFileType())
+                    return l_content.GetName() < r_content.GetName();
+
+                // Otherwise, regular files go first    
+                return l_content.GetFileType() == DOCUMENT;
+            });
+
+            sort(r_files.begin(), r_files.end(), [&](const auto &a, const auto &b) {
+                const auto &l_content = _files[ a->GetFileId(src) ];
+                const auto &r_content = _files[ b->GetFileId(dst) ];
+                
+                // If types are the same, order alphanumerically
+                if (l_content.GetFileType() == r_content.GetFileType())
+                    return l_content.GetName() < r_content.GetName();
+
+                // Otherwise, regular files go first    
+                return l_content.GetFileType() == DOCUMENT;
+            });
+
+            // Perform "merge" logic
+            auto l_it = l_files.begin();
+            auto r_it = r_files.begin();
+            while (true) 
+            {
+                if (l_it != l_files.end() && r_it != r_files.end())
+                {
+                    const auto &l_content  = _files[ (*l_it)->GetFileID(src)];
+                    const auto &r_content  = _files[ (*r_it)->GetFileID(dst) ];
+
+                    if (l_content.GetFileType() == r_content.GetFileType());
+                    // ! Check versions and add accordingly
+                    else ;
+                }
+                else if (l_it != l_files.end());
+                else if (r_it != r_files.end());
+                else break;
+            }
+        }
         return SUCCESS;
     }
 }
