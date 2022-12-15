@@ -69,6 +69,8 @@ namespace CELV
             /// @param version2 Version 2 to fuse
             void CELVFusion(const Version& version1, const Version& version2);
 
+            void CELVVersion() const;
+
             // -- < Client logic > ---------------------------------------------------------------------------------------------------------
             
             /// @brief Execute main loop

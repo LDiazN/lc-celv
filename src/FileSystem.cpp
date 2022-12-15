@@ -37,13 +37,273 @@ namespace CELV
         _content = new_content;
     }
 
-    FileTree::FileTree(FileID id, std::shared_ptr<FileTree> parent,  Version version)
+    std::vector<File> FileTree::_files;
+
+    FileTree::FileTree(FileID id, std::shared_ptr<FileTree> parent,  Version version, std::shared_ptr<CELV> _version_control)
         : _contained_files()
         , _parent(parent)
         , _change_box(nullptr)
         , _file_id(id)
         , _version(version)
+        , _celv(_version_control)
     { }
+
+    std::shared_ptr<FileTree> FileTree::MakeRootFileTree()
+    {
+        assert(_files.empty() && "Can't create filesystem root, already exists");
+        _files.push_back(File{"/", 0});
+
+        return std::make_shared<FileTree>(0, nullptr, 0, nullptr);
+    }
+
+    File FileTree::GetFileData() const
+    {
+        if (CELVActive())
+            return _celv->GetFiles()[_file_id];
+
+        return _files[_file_id];
+    }
+
+    const std::vector<File> FileTree::List() const
+    {
+        if (CELVActive())
+            return _celv->List();
+        
+        std::vector<File> results;
+        for(auto const& [file_id, file_ref] : _contained_files)
+            results.emplace_back(_files[file_id]);
+        
+        return results;
+    }
+
+    STATUS FileTree::ChangeDirectory(const std::string& directory_name, std::shared_ptr<FileTree>& out_new_dir, std::string& out_error_msg)
+    {
+        if (CELVActive())
+        {
+            auto status = _celv->ChangeDirectory(directory_name, out_error_msg);
+
+            if (status == ERROR)
+                return status;
+
+            out_new_dir = _celv->GetCurrentWorkingDirectoryRef();
+            return SUCCESS;
+        }
+        auto const& files = _contained_files;
+
+        // Iterate over files searching for a file matching this name
+        for(auto const& [file_id, file] : files)
+        {
+            const bool name_match = _files[file_id].GetName() == directory_name;
+
+            // If match and is directory...
+            if ( name_match && _files[file_id].GetFileType() == FileType::DIRECTORY)
+            {
+                out_new_dir = file;
+                return SUCCESS;
+            }
+            else if(name_match) // if match but not dir...
+            {
+                out_error_msg = "Specified file is not a directory";
+                return ERROR;
+            }
+        }
+
+        out_error_msg = "No such file or directory";
+        return ERROR;
+    }
+
+    STATUS FileTree::ChangeDirectory(std::shared_ptr<FileTree>& out_new_dir, std::string& out_error_msg)
+    {
+        // Redirect to celv if active
+        if (CELVActive() && _celv->GetCurrentWorkingDirectoryRef()->IsRoot())
+        {
+            assert(_celv->GetParentDir() != nullptr && "parent of celv can't be null");
+            auto possible_new_parent = _celv->GetParentDir()->GetParent();
+            if (possible_new_parent == nullptr)
+            {
+                out_error_msg = "Can't go up from root dir";
+                return ERROR;
+            }
+
+            out_new_dir = possible_new_parent;
+            return SUCCESS;
+        }
+        else if (CELVActive())
+        {
+            auto status = _celv->ChangeDirectory(out_error_msg);
+            if (status == ERROR)
+                return status;
+            
+            out_new_dir = _celv->GetCurrentWorkingDirectoryRef();
+            return status;
+        }
+
+        // Check if this file is root
+        if (IsRoot())
+        {
+            out_error_msg = "Can't go up from root dir";
+            return ERROR;
+        }
+
+        out_new_dir = _parent;
+        return SUCCESS;
+    }
+
+    STATUS FileTree::CreateFile(const std::string& filename, FileType type, std::string& out_error_msg, std::shared_ptr<FileTree> new_parent)
+    {
+        // Check if CELV if necessary
+        if (CELVActive())
+            return _celv->CreateFile(filename, type, out_error_msg);
+
+        // Check if any files has this name already
+        for(auto const& [file_id, file] : _contained_files)
+        {
+            if (_files[file_id].GetName() == filename)
+            {
+                out_error_msg = "File already exists";
+                return ERROR;
+            }
+        }
+
+        // Create new file now that we know we can
+        auto const new_file_id = _files.size();
+        switch (type)
+        {
+        case FileType::DOCUMENT:
+            _files.emplace_back(filename, new_file_id, "");
+            break;
+        case FileType::DIRECTORY:
+            _files.emplace_back(filename, new_file_id);
+            break;
+        default:
+            break;
+        }
+
+        _contained_files[new_file_id] = std::make_shared<FileTree>(new_file_id, new_parent);
+        return SUCCESS;
+    }
+
+    STATUS FileTree::RemoveFile(const std::string& filename, std::string& out_error_msg)
+    {
+        if(CELVActive())
+            return _celv->RemoveFile(filename, out_error_msg);
+        
+        for (auto const& [file_id, file_ref] : _contained_files)
+        {
+            auto const name_match = filename == _files[file_id].GetName();
+            if (name_match && _files[file_id].GetFileType() == FileType::DOCUMENT)
+            {
+                _contained_files.erase(file_id);
+                return SUCCESS;
+            }
+            else if (name_match)
+            {
+                file_ref->Destroy();
+                _contained_files.erase(file_id);
+                return SUCCESS;
+            }
+
+        }
+
+        out_error_msg = "No such file or directory";
+        return ERROR;
+    }
+
+    STATUS FileTree::ReadFile(const std::string& filename, std::string& out_content, std::string& out_error_msg) const
+    {
+        if(CELVActive())
+            return _celv->ReadFile(filename, out_content, out_error_msg);
+        
+        for (auto const& [file_id, file_ref] : _contained_files)
+        {
+            auto const name_match = filename == _files[file_id].GetName();
+            if (name_match && _files[file_id].GetFileType() == FileType::DOCUMENT)
+            {
+                out_content = _files[file_id].GetContent();
+                return SUCCESS;
+            }
+            else if (name_match)
+            {
+                out_error_msg = "Can't read content from directory";
+                return ERROR;
+            }
+        }
+
+        out_error_msg = "No such file or directory";
+        return ERROR;
+    }
+
+    STATUS FileTree::WriteFile(const std::string& filename,const std::string& content, std::string& out_error_msg)
+    {
+        if (CELVActive())
+            return _celv->WriteFile(filename, content, out_error_msg);
+        
+        for (auto const& [file_id, file_ref] : _contained_files)
+        {
+            auto const name_match = filename == _files[file_id].GetName();
+            if (name_match && _files[file_id].GetFileType() == FileType::DOCUMENT)
+            {
+                _files[file_id].SetContent(content);
+                return SUCCESS;
+            }
+            else if (name_match)
+            {
+                out_error_msg = "Can't write content to directory";
+                return ERROR;
+            }
+        }
+
+        out_error_msg = "No such file or directory";
+        return ERROR;
+    }
+
+    STATUS FileTree::SetVersion(Version version, std::string& out_error_msg)
+    {
+        if (CELVActive())
+            return _celv->SetVersion(version, out_error_msg);
+        
+        out_error_msg = "CELV not initialized, can't change any version";
+        return ERROR;
+    }
+
+    STATUS FileTree::GetVersion(Version& out_version, std::string& out_error_msg)
+    {
+        if (CELVActive())
+        {
+            out_version = _celv->GetVersion();
+            return SUCCESS;
+        }
+        
+        out_error_msg = "CELV not initialized, can't get any version";
+        return ERROR;
+    }
+
+    STATUS  FileTree::GetHistory(std::vector<Action>& out_history, std::string& out_error_msg)
+    {
+        if (CELVActive())
+        {
+            out_history = _celv->GetHistory();
+            return SUCCESS;
+        }
+
+        out_error_msg = "CELV not initialized, can't retrieve any history";
+        return ERROR;
+    }
+
+    STATUS FileTree::InitCELV(std::string& out_error_msg, std::shared_ptr<FileTree> celv_parent)
+    {
+        if (IsCelvInitInSubtree())
+        {
+            out_error_msg = "Can't init celv in this directory. Already initialized in subdirectory.";            return ERROR;
+        }
+        
+        auto cloned_tree = CloneTree();
+        auto const& new_celv = CELV::FromTree(cloned_tree);
+        _celv = new_celv;
+        _celv->SetParentDir(celv_parent);
+        _file_id = _celv->GetCurrentWorkingDirectoryRef()->GetFileID();
+        return SUCCESS;
+    }
 
     std::shared_ptr<FileTree> FileTree::AddFile(std::shared_ptr<FileTree> file, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent)
     {
@@ -85,7 +345,7 @@ namespace CELV
         new_childs.erase(old_file_id);
 
         auto const& old_node = (*possible_old_child).second;
-        auto const new_node = std::make_shared<FileTree>(new_file_id, old_node->GetParent(), new_version);
+        auto const new_node = std::make_shared<FileTree>(new_file_id, old_node->GetParent(), new_version, _celv);
         new_childs[new_file_id] = new_node;
 
         return UpdateNode(new_childs, current_version, new_version, out_possible_new_parent);
@@ -130,13 +390,13 @@ namespace CELV
         // If changebox is empty, update it and and return nothing
         if (_change_box == nullptr)
         {
-            _change_box = std::make_shared<FileTree>(new_file_id, _parent, new_version);
+            _change_box = std::make_shared<FileTree>(new_file_id, _parent, new_version, _celv);
             _change_box->SetNewChilds(_contained_files);
             return nullptr;
         }
 
         // If changebox if full, we need to create a new node
-        auto new_node = std::make_shared<FileTree>(new_file_id, nullptr, new_version);
+        auto new_node = std::make_shared<FileTree>(new_file_id, nullptr, new_version, _celv);
         // Update parent for this node
         if (_parent == nullptr)
         {   
@@ -166,13 +426,13 @@ namespace CELV
         // If changebox is empty, update it and and return nothing
         if (_change_box == nullptr)
         {
-            _change_box = std::make_shared<FileTree>(_file_id, _parent, new_version);
+            _change_box = std::make_shared<FileTree>(_file_id, _parent, new_version, _celv);
             _change_box->SetNewChilds(new_contained_files);
             return nullptr;
         }
 
         // If changebox if full, we need to create a new node
-        auto new_node = std::make_shared<FileTree>(_file_id, nullptr, new_version);
+        auto new_node = std::make_shared<FileTree>(_file_id, nullptr, new_version, _celv);
         new_node->SetNewChilds(new_contained_files);
 
         // Update parent for this node
@@ -193,6 +453,34 @@ namespace CELV
             new_node->SetParent(possible_new_parent);
 
         return new_node;
+    }
+
+    bool FileTree::IsCelvInitInSubtree() const
+    {
+        if (CELVActive())
+            return true;
+
+        for (auto const& [file_id, file_ref] : _contained_files)
+            if (file_ref->IsCelvInitInSubtree())
+                return true;
+        
+        return false;
+    }
+
+    std::shared_ptr<FileTree> FileTree::CloneTree() const
+    {
+        auto const new_root = std::make_shared<FileTree>(_file_id, nullptr, _version, _celv);
+        ChildMap new_child_map;
+
+        for (auto const& [file_id, file_ref] : _contained_files)
+        {
+            auto const new_tree = file_ref->CloneTree();
+            new_child_map[file_id] = new_tree;
+            new_tree->SetParent(new_root);
+        }
+
+        new_root->SetNewChilds(new_child_map);
+        return new_root;
     }
 
     std::string Action::Str() const
@@ -238,7 +526,7 @@ namespace CELV
         return ss.str();
     }
 
-    FileSystem::FileSystem()
+    CELV::CELV()
         : _files()
     { 
         _current_version = 0; // initial version
@@ -248,7 +536,50 @@ namespace CELV
         _files.emplace_back("/", 0); // root dir is /
     }
 
-    const std::vector<File> FileSystem::List() const
+    std::shared_ptr<CELV> CELV::FromTree(std::shared_ptr<FileTree> file_tree)
+    { 
+        auto celv = std::make_shared<CELV>();
+
+        file_tree->SetParent(nullptr);
+        celv->_current_version = 0; // initial version
+        celv->_next_available_version = 1; // next possible version
+        celv->_versions = {file_tree}; // create an original version
+        celv->_working_dir = celv->_versions[celv->_current_version]; // set working dir as root of only version available
+        
+        // Traverse given tree updating their values
+        std::stack<std::shared_ptr<FileTree>> file_trees;
+        std::map<FileID, FileID> old_to_new;
+        file_trees.emplace(celv->_working_dir);
+
+        while(!file_trees.empty())
+        {
+            auto next_tree = file_trees.top();
+            file_trees.pop();
+            next_tree->_version = 0;
+            next_tree->_celv = celv; // oh no
+
+            auto const old_id = next_tree->GetFileID();
+            FileID new_id;
+            auto const possible_find = old_to_new.find(old_id);
+            if (possible_find == old_to_new.end())
+            {
+                new_id = celv->_files.size();
+                celv->_files.emplace_back(FileTree::_files[old_id]);
+                old_to_new[old_id] = new_id;
+            }
+            else
+                new_id = possible_find->second;
+
+            next_tree->_file_id = new_id;
+            // Traverse over its children
+            for(auto [file_id, file_ref] : next_tree->_contained_files)
+                file_trees.push(file_ref);
+        }
+
+        return celv;
+    }
+
+    const std::vector<File> CELV::List() const
     {
         assert(_working_dir != nullptr && "File tree is not initialized");
         auto const contained_files = _working_dir->ContainedFiles(_current_version);
@@ -262,14 +593,14 @@ namespace CELV
         return files;
     }
 
-    std::string FileSystem::GetCurrentWorkingDirectory() const
+    std::string CELV::GetCurrentWorkingDirectory() const
     {
         assert(_working_dir != nullptr && "File tree is not initialized");
         auto dir_id =  _working_dir->GetFileID(_current_version);
         return _files[dir_id].GetName();
     }
 
-    STATUS FileSystem::ChangeDirectory(const std::string& directory_name, std::string& out_error_msg)
+    STATUS CELV::ChangeDirectory(const std::string& directory_name, std::string& out_error_msg)
     {
         auto const& files = _working_dir->ContainedFiles(_current_version);
 
@@ -297,7 +628,7 @@ namespace CELV
         return ERROR;
     }
 
-    STATUS FileSystem::ChangeDirectory(std::string& out_error_msg)
+    STATUS CELV::ChangeDirectory(std::string& out_error_msg)
     {
         if (_working_dir->GetParent() == nullptr)
         {
@@ -309,7 +640,7 @@ namespace CELV
         return SUCCESS;
     }
 
-    STATUS FileSystem::CreateFile(const std::string& filename, FileType type, std::string& out_error_msg)
+    STATUS CELV::CreateFile(const std::string& filename, FileType type, std::string& out_error_msg)
     {
 
         // Check if any files has this name already
@@ -342,7 +673,7 @@ namespace CELV
         // Note that adding a new file means that the version root might be new 
         // and that a new version of current working dir could be created
         std::shared_ptr<FileTree> possible_new_version_parent = nullptr;
-        auto possible_new_node = _working_dir->AddFile(std::make_shared<FileTree>(new_file_id, _working_dir), _current_version, _next_available_version, possible_new_version_parent);
+        auto possible_new_node = _working_dir->AddFile(std::make_shared<FileTree>(new_file_id, _working_dir, _next_available_version, _working_dir->_celv), _current_version, _next_available_version, possible_new_version_parent);
 
         // Update version root
         if (possible_new_version_parent != nullptr) // if a new root is created, added to version control
@@ -369,7 +700,7 @@ namespace CELV
         return SUCCESS;
     }
 
-    STATUS FileSystem::RemoveFile(const std::string& filename, std::string& out_error_msg)
+    STATUS CELV::RemoveFile(const std::string& filename, std::string& out_error_msg)
     {
         for(auto const& file : _working_dir->ContainedFiles(_current_version))
         {
@@ -400,7 +731,7 @@ namespace CELV
         return ERROR;
     }
 
-    STATUS FileSystem::ReadFile(const std::string& filename, std::string& out_content, std::string& out_error_msg) const
+    STATUS CELV::ReadFile(const std::string& filename, std::string& out_content, std::string& out_error_msg) const
     {
         for(auto const& file : _working_dir->ContainedFiles(_current_version))
         {
@@ -422,7 +753,7 @@ namespace CELV
         return ERROR;
     }
 
-    STATUS FileSystem::WriteFile(const std::string& filename, const std::string& content, std::string& out_error_msg)
+    STATUS CELV::WriteFile(const std::string& filename, const std::string& content, std::string& out_error_msg)
     {
         for(auto const& file : _working_dir->ContainedFiles(_current_version))
         {
@@ -463,7 +794,7 @@ namespace CELV
         return ERROR;
     }
 
-    STATUS FileSystem::SetVersion(Version version, std::string& out_error_msg)
+    STATUS CELV::SetVersion(Version version, std::string& out_error_msg)
     {
         if (version >= _next_available_version) // raise error if requesting a version too high
         {
@@ -505,7 +836,7 @@ namespace CELV
         return SUCCESS;
     }
 
-    void FileSystem::Destroy()
+    void CELV::Destroy()
     {
         for (auto &version : _versions)
             version->Destroy();
@@ -513,5 +844,84 @@ namespace CELV
         _files.clear();
         _history.clear();
         _working_dir = nullptr;
+    }
+
+    FileSystem::FileSystem()
+    {
+        _file_tree = FileTree::MakeRootFileTree();
+        _working_directory = _file_tree;
+    }
+
+    std::vector<File> FileSystem::List() const
+    {
+        return _working_directory->List();
+    }
+
+    std::string  FileSystem::GetCurrentWorkingDirectory() const
+    {
+        return _working_directory->GetFileData().GetName();
+    }
+
+    STATUS FileSystem::ChangeDirectory(const std::string& directory_name, std::string& out_error_msg)
+    {
+        std::shared_ptr<FileTree> new_cwd;
+        auto status = _working_directory->ChangeDirectory(directory_name, new_cwd, out_error_msg);
+        if (status == ERROR)
+            return status;
+
+        _working_directory = new_cwd;
+        return SUCCESS;
+    }
+
+    STATUS FileSystem::ChangeDirectory(std::string& out_error_msg)
+    {
+        std::shared_ptr<FileTree> new_cwd;
+        auto status = _working_directory->ChangeDirectory(new_cwd, out_error_msg);
+        if (status == ERROR)
+            return status;
+
+        _working_directory = new_cwd;
+        return SUCCESS;
+    }
+
+    STATUS FileSystem::CreateFile(const std::string& filename, FileType type, std::string& out_error_msg)
+    {
+        return _working_directory->CreateFile(filename, type, out_error_msg, _working_directory);
+    }
+
+    STATUS FileSystem::RemoveFile(const std::string& filename, std::string& out_error_msg)
+    {
+        return _working_directory->RemoveFile(filename, out_error_msg);
+    }
+
+    STATUS FileSystem::ReadFile(const std::string& filename, std::string& out_content, std::string& out_error_msg) const
+    {
+        return _working_directory->ReadFile(filename, out_content, out_error_msg);
+    }
+
+    STATUS FileSystem::WriteFile(const std::string& filename,const std::string& content, std::string& out_error_msg)
+    {
+        return _working_directory->WriteFile(filename, content, out_error_msg);
+    }
+
+    STATUS FileSystem::SetVersion(Version version, std::string& out_error_msg)
+    {
+        return _working_directory->SetVersion(version, out_error_msg);
+    }
+
+    STATUS FileSystem::GetVersion(Version& out_version, std::string& out_error_msg) const
+    {
+        return _working_directory->GetVersion(out_version, out_error_msg);
+    }
+
+    STATUS FileSystem::GetHistory(std::vector<Action>& out_history, std::string& error_msg)
+    {
+        return _working_directory->GetHistory(out_history, error_msg);
+    }
+    void FileSystem::Destroy()
+    {
+        _working_directory = nullptr;
+        _file_tree->Destroy();
+        _file_tree = nullptr;
     }
 }

@@ -141,8 +141,7 @@ namespace CELV
         }
         else if (command == "celv_version")
         {
-            auto version = _filesystem.GetVersion();
-            std::cout << version << std::endl;
+            CELVVersion();
         }
         else if (command == "celv_fusion")
         {
@@ -235,12 +234,22 @@ namespace CELV
 
     void Client::CELVInit()
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error_msg;
+        if (_filesystem.InitCELV(error_msg) == ERROR)
+            std::cout << RED << error_msg << RESET << std::endl;
     }
 
     void Client::CELVHistory()
     {
-        auto const& actions = _filesystem.GetHistory();
+        
+        std::vector<Action> actions;
+        std::string error_msg;
+        if (_filesystem.GetHistory(actions, error_msg) == ERROR)
+        {
+            std::cerr << RED << error_msg << RESET << std::endl;
+            return;
+        }
+
         for (auto const& action : actions)
             std::cout << action.Str() << std::endl;
     }
@@ -255,6 +264,20 @@ namespace CELV
     void Client::CELVFusion(const Version& version1, const Version& version2)
     {
         std::cout << "Function not yet implemented" << std::endl;
+    }
+
+    void Client::CELVVersion() const
+    {
+        std::string error_msg;
+        Version version;
+
+        if(_filesystem.GetVersion(version, error_msg) == ERROR)
+        {
+            std::cerr << RED << error_msg << RESET << std::endl;
+            return;
+        }
+        
+        std::cout << version << std::endl;
     }
 
     void Client::Help()

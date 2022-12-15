@@ -53,8 +53,140 @@ namespace CELV
         FileID _id;
     };
 
+    /// @brief Possible action types performed by the client
+    enum class ActionType
+    {
+        WRITE,
+        REMOVE,
+        CREATE_DIR,
+        CREATE_DOC,
+        MERGE
+    };
+
+    using ActionArgs = std::vector<std::string>;
+
+    /// @brief Struct representing data for an action
+    struct Action
+    {
+        ActionType type;
+        ActionArgs args;
+        Version origin_version;
+        Version new_version;
+
+        public:
+        /// @brief Return a string representation of this object
+        /// @return String representing this action
+        std::string Str() const;
+    };
+
+    class FileTree;
+
+    /// @brief This class represents a version control system. 
+    class CELV
+    {
+        public:
+        CELV();
+        CELV(std::shared_ptr<FileTree> file_tree);
+
+        static std::shared_ptr<CELV> FromTree(std::shared_ptr<FileTree> file_tree);
+
+        /// @brief List files in current directory
+        /// @return List of files in current directory
+        const std::vector<File> List() const;
+
+        /// @brief Get currently active current working directory
+        /// @return name of currently active working directory
+        std::string GetCurrentWorkingDirectory() const;
+
+        std::shared_ptr<FileTree> GetCurrentWorkingDirectoryRef() const { return _working_dir; }
+
+        /// @brief Try to change directory to a directory named `directory_name`. If not such directory, return error  
+        /// @param directory_name Name of directory to change to
+        /// @param out_error_msg Error message
+        /// @return Success Status
+        STATUS ChangeDirectory(const std::string& directory_name, std::string& out_error_msg);
+
+        /// @brief Try to change directory to parent directory. Raise error if already in root directory. 
+        /// @param out_error_msg error message if some error happened
+        /// @return Success Status
+        STATUS ChangeDirectory(std::string& out_error_msg);
+
+        /// @brief Try to create a directory named `directory_name`. Report error if not possible and store message in `out_error_msg`
+        /// @param filename Name of new directory to create
+        /// @param type If directory or document
+        /// @param out_error_msg Resulting error message when not possible
+        /// @return Success Status
+        STATUS CreateFile(const std::string& filename, FileType type, std::string& out_error_msg);
+
+        /// @brief Try to remove specified file. If directory, perform recursive delete
+        /// @param filename name of file to delete
+        /// @param out_error_msg error message if not possible
+        /// @return Success status
+        STATUS RemoveFile(const std::string& filename, std::string& out_error_msg);
+
+        /// @brief Try to read content of file `filename` to string `out_content`. Return error if not possible 
+        /// @param filename name of file to read in current directory
+        /// @param out_content where to return content of file
+        /// @param out_error_msg error msg if not possible to read
+        /// @return Status success
+        STATUS ReadFile(const std::string& filename, std::string& out_content, std::string& out_error_msg) const;
+
+        /// @brief Try to write `content` into a file named `filename`. Return error if not possible
+        /// @param filename name of file to write
+        /// @param content content to write into the file
+        /// @param out_error_msg error msg if not possible
+        /// @return Success status
+        STATUS WriteFile(const std::string& filename,const std::string& content, std::string& out_error_msg);
+
+        /// @brief Try to change version to the specified version
+        /// @param version Version to change to
+        /// @param out_error_msg error message in case of error
+        /// @return Success status
+        STATUS SetVersion(Version version, std::string& out_error_msg);
+
+        /// @brief Get currently active version
+        /// @return currently active version
+        Version GetVersion() const { return _current_version; }
+
+        /// @brief Get the history of actions taken so far
+        /// @return List of actions in execution order
+        const std::vector<Action>& GetHistory() const { return _history; }
+
+        /// @brief Destroy all data stored in this object
+        void Destroy();
+
+        /// @brief Get a read only reference to files
+        /// @return 
+        const std::vector<File>& GetFiles() const { return _files; }
+
+        std::shared_ptr<FileTree> GetParentDir() const { return _parent_file; }
+        void SetParentDir(std::shared_ptr<FileTree> parent_dir) { _parent_file = parent_dir; }
+
+        private:
+        /// @brief Push an action when performing some operation
+        /// @param action action to push
+        void PushAction(const Action& action) { _history.push_back(action); }
+
+        /// @brief  Traverse filetree adding their files into this
+        /// @param filetree 
+        void AddFilesFromFileTree(std::shared_ptr<FileTree> filetree);
+
+
+        private:
+        std::vector<File> _files;
+        std::shared_ptr<FileTree> _working_dir;
+        // Array of version roots
+        std::vector<std::shared_ptr<FileTree>> _versions;
+        Version _current_version;
+        Version _next_available_version;
+        std::vector<Action> _history;
+        std::shared_ptr<FileTree> _parent_file;
+    };
+
     class FileTree
     {
+        friend CELV;
+
         public:
         // typedef ChildMap = ...
         using ChildMap = std::map<FileID, std::shared_ptr<FileTree>>;
@@ -63,7 +195,83 @@ namespace CELV
         /// @brief Create a new FileTree
         /// @param id id of this file
         /// @param parent parent file
-        FileTree(FileID id, std::shared_ptr<FileTree> parent, Version version = 0);
+        FileTree(FileID id, std::shared_ptr<FileTree> parent, Version version = 0, std::shared_ptr<CELV> _version_control = nullptr);
+
+        /// @brief Create a root FileTree object assuming no file tree has been created so far
+        /// @return ptr to file tree root
+        static std::shared_ptr<FileTree> MakeRootFileTree();
+
+        File GetFileData() const;
+
+        // The following functions are CRUD function that may or may not use the version control system depending on 
+        // the confuguration of the current filetree node
+
+        // -- < CRUD Functions > ------------------------------------------------------------------------------------
+
+        /// @brief List files contained by this node
+        /// @return List of files contained by this folder
+        const std::vector<File> List() const;
+
+        /// @brief Try to change directory to a directory named `directory_name`. If not such directory, return error  
+        /// @param directory_name Name of directory to change to
+        /// @param out_error_msg Error message
+        /// @return Success Status
+        STATUS ChangeDirectory(const std::string& directory_name, std::shared_ptr<FileTree>& out_new_dir, std::string& out_error_msg);
+
+        /// @brief Try to change directory to parent directory. Raise error if already in root directory. 
+        /// @param out_error_msg error message if some error happened
+        /// @return Success Status
+        STATUS ChangeDirectory(std::shared_ptr<FileTree>& out_new_dir, std::string& out_error_msg);
+
+        /// @brief Try to create a directory named `directory_name`. Report error if not possible and store message in `out_error_msg`
+        /// @param filename Name of new directory to create
+        /// @param type If directory or document
+        /// @param out_error_msg Resulting error message when not possible
+        /// @return Success Status
+        STATUS CreateFile(const std::string& filename, FileType type, std::string& out_error_msg, std::shared_ptr<FileTree> new_parent = nullptr);
+
+        /// @brief Try to remove specified file. If directory, perform recursive delete
+        /// @param filename name of file to delete
+        /// @param out_error_msg error message if not possible
+        /// @return Success status
+        STATUS RemoveFile(const std::string& filename, std::string& out_error_msg);
+
+        /// @brief Try to read content of file `filename` to string `out_content`. Return error if not possible 
+        /// @param filename name of file to read in current directory
+        /// @param out_content where to return content of file
+        /// @param out_error_msg error msg if not possible to read
+        /// @return Status success
+        STATUS ReadFile(const std::string& filename, std::string& out_content, std::string& out_error_msg) const;
+
+        /// @brief Try to write `content` into a file named `filename`. Return error if not possible
+        /// @param filename name of file to write
+        /// @param content content to write into the file
+        /// @param out_error_msg error msg if not possible
+        /// @return Success status
+        STATUS WriteFile(const std::string& filename,const std::string& content, std::string& out_error_msg);
+
+        /// @brief Try to change version to the specified version
+        /// @param version Version to change to
+        /// @param out_error_msg error message in case of error
+        /// @return Success status
+        STATUS SetVersion(Version version, std::string& out_error_msg);
+
+        /// @brief Get currently active version
+        /// @param out_version resulting version;
+        /// @return Success status
+        STATUS GetVersion(Version& out_version, std::string& out_error_msg);
+
+        /// @brief Get the history of actions taken so far
+        /// @return List of actions in execution order
+        STATUS  GetHistory(std::vector<Action>& out_history, std::string& out_error_msg);
+
+        /// @brief Try to init version control system in this node
+        /// @param out_error_msg 
+        /// @return 
+        STATUS InitCELV(std::string& out_error_msg, std::shared_ptr<FileTree> celv_parent = nullptr);
+
+        // The following functions are Control version related, used with CELV object
+        // -- < Version control functions > --------------------------------------------------------------
 
         /// @brief Get parent of this tree
         /// @return pointer to parent
@@ -150,6 +358,8 @@ namespace CELV
         /// @brief Destroy this tree and all its children
         void Destroy();
 
+        bool CELVActive() const { return _celv != nullptr; }
+
         private:
         /// @brief Update file_id of this node. Return new node if new was created
         /// @param new_file_id updated file id
@@ -165,39 +375,25 @@ namespace CELV
         /// @return nullptr if no new node was created, ptr to newly created node otherwise
         std::shared_ptr<FileTree> UpdateNode(const ChildMap& new_contained_files,Version current_version, Version new_version, std::shared_ptr<FileTree>& out_new_version_parent); // operacion de directorio
 
+        /// @brief Set CELV reference to the entire tree
+        /// @param celv_ref Ref to celv to update in the entire subtree
+        void SetCELVRef(std::shared_ptr<CELV> celv_ref) { _celv = celv_ref; };
+
+        bool IsCelvInitInSubtree() const;
+
+        /// @brief Clone this file tree into a new ptr
+        /// @return cloned tree
+        std::shared_ptr<FileTree> CloneTree() const;
+
         private:
         ChildMap _contained_files;
         std::shared_ptr<FileTree> _parent;
         std::shared_ptr<FileTree> _change_box;
         FileID _file_id; // id of file containing actual data
         Version _version;
-        
-    };
-
-    /// @brief Possible action types performed by the client
-    enum class ActionType
-    {
-        WRITE,
-        REMOVE,
-        CREATE_DIR,
-        CREATE_DOC,
-        MERGE
-    };
-
-    using ActionArgs = std::vector<std::string>;
-
-    /// @brief Struct representing data for an action
-    struct Action
-    {
-        ActionType type;
-        ActionArgs args;
-        Version origin_version;
-        Version new_version;
-
-        public:
-        /// @brief Return a string representation of this object
-        /// @return String representing this action
-        std::string Str() const;
+        bool _is_celv_root;
+        std::shared_ptr<CELV> _celv;
+        static std::vector<File> _files;
     };
 
     class FileSystem
@@ -207,8 +403,10 @@ namespace CELV
 
         /// @brief List files in current directory
         /// @return List of files in current directory
-        const std::vector<File> List() const;
+        std::vector<File> List() const;
 
+        /// @brief Get currently active current working directory
+        /// @return name of currently active working directory
         std::string GetCurrentWorkingDirectory() const;
 
         /// @brief Try to change directory to a directory named `directory_name`. If not such directory, return error  
@@ -257,28 +455,24 @@ namespace CELV
 
         /// @brief Get currently active version
         /// @return currently active version
-        Version GetVersion() const { return _current_version; }
+        STATUS GetVersion(Version& out_version, std::string& out_error_msg) const;
 
         /// @brief Get the history of actions taken so far
         /// @return List of actions in execution order
-        const std::vector<Action>& GetHistory() const { return _history; }
+        STATUS GetHistory(std::vector<Action>& out_history, std::string& error_msg);
+
+        /// @brief Init the current working directoy with a version control system
+        /// @param out_error_msg possible error message in case of error
+        /// @return Success status
+        STATUS InitCELV(std::string& out_error_msg) { return _working_directory->InitCELV(out_error_msg, _working_directory); }
 
         /// @brief Destroy all data stored in this object
         void Destroy();
 
         private:
-        /// @brief Push an action when performing some operation
-        /// @param action action to push
-        void PushAction(const Action& action) { _history.push_back(action); }
+        std::shared_ptr<FileTree> _file_tree;
+        std::shared_ptr<FileTree> _working_directory;
 
-        private:
-        std::vector<File> _files;
-        std::shared_ptr<FileTree> _working_dir;
-        // Array of version roots
-        std::vector<std::shared_ptr<FileTree>> _versions;
-        Version _current_version;
-        Version _next_available_version;
-        std::vector<Action> _history;
     };
 }
 
