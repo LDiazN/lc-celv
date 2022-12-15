@@ -636,7 +636,8 @@ namespace CELV
             return ERROR;
         }
 
-        _working_dir = _working_dir->GetParent();
+        std::string s;
+        assert(SetVersion(_current_version, s, 1) == SUCCESS);
         return SUCCESS;
     }
 
@@ -794,7 +795,7 @@ namespace CELV
         return ERROR;
     }
 
-    STATUS CELV::SetVersion(Version version, std::string& out_error_msg)
+    STATUS CELV::SetVersion(Version version, std::string& out_error_msg, size_t skip_in_stack)
     {
         if (version >= _next_available_version) // raise error if requesting a version too high
         {
@@ -815,7 +816,7 @@ namespace CELV
 
         _current_version = version;
         next_dir = _versions[version];
-        while(!path_to_cwd.empty())
+        while(path_to_cwd.size() > skip_in_stack)
         {
             // Get id of next folder to advance
             auto next_dir_id = path_to_cwd.top();

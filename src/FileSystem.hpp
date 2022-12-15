@@ -142,7 +142,7 @@ namespace CELV
         /// @param version Version to change to
         /// @param out_error_msg error message in case of error
         /// @return Success status
-        STATUS SetVersion(Version version, std::string& out_error_msg);
+        STATUS SetVersion(Version version, std::string& out_error_msg, size_t skip_in_stack = 0);
 
         /// @brief Get currently active version
         /// @return currently active version
