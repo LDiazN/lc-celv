@@ -246,11 +246,11 @@ La fusión actuaría como una unión sobre el contenido de directorios comunes a
 
 Como se van a comparar archivos en directorios en paralelo sobre árboles de versión distintos, conviene utilizar un recorrido como BFS, que por ser en amplitud facilita el unir los archivos por nivel a la vez que se actualiza el árbol nuevo de versiones de forma ordenada.
 
-Para que esto funcione, la cola del BFS debe guardar referencias a los directorios comunes a ambas versiones, pero cuyas versiones difieren (digamos $src$ y $dst$). Tambien debe guardar una referencia al mismo directorio de la versión actual (posiblemente nuevo, digamos $m_ver$).
+Para que esto funcione, la cola del BFS debe guardar referencias a los directorios comunes a ambas versiones, pero cuyas versiones difieren (digamos $src$ y $dst$). Tambien debe guardar una referencia al mismo directorio de la versión actual (posiblemente nuevo, digamos $m\_ver$).
 
 Se guardan estas referencias a directorios porque corresponden a los directorios en donde hay diferencias entre versiones y el último porque corresponde a la versión destino.
 
-Cada vez que se desempile, se actualiza el directorio actual (usando la ultima referencia, la del arbol de la versión actual).
+Cada vez que se desempile, se actualiza el directorio actual (usando la ultima referencia, $m\_ver$).
 
 Luego se revisa el contenido de los directorios asociados a las referencias de las versiones de origen y destino. Esta revisión debe ser en paralelo, pues se está intentando unir un directorio común , pero con diferencias entre las versiones origen y destino. 
 
