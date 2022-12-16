@@ -234,25 +234,27 @@ O(AlturaArbol)
 
 ### Fusionar
 
-**Implementación deseada**. 
+La operación no se implemento. 
 
-Al fusionar versiones se puede reciclar alguna de las raices de las versiones como raiz nueva (pues a fin de cuentas la estructura soporta cambios y persistencia).
+Sin embargo a continuación se describe la lógica que tendría una implementación deseada.
 
-Para esto se escoge la raiz de alguna de las 2 versiones como raiz de la version de fusion.
+Al fusionar versiones se puede reciclar alguna de las raíces de las versiones como raíz nueva (pues a fin de cuentas la estructura soporta cambios y persistencia).
 
-La fusion actua como una union sobre el contenido de directorios comunes a ambas versiones. Es decir, aquellos archivos comunes a ambas versiones que además  tengan la misma versión se dejan intactos, el resto se incluye según sea necesario.
+Para esto se escoge la raíz de alguna de las 2 versiones como raíz de la version de fusión.
 
-Como se va a estar comparando archivos en directorios en paralelo sobre arboles de version distintos, conviene utilizar un recorrido como BFS que por ser en amplitud facilita el unir los archivos por nivel a la vez que se actualiza el arbol nuevo de versiones, de forma ordenada.
+La fusión actuaría como una unión sobre el contenido de directorios comunes a ambas versiones. Es decir, aquellos archivos comunes a ambas versiones que además  tengan la misma versión se dejan intactos, el resto se incluye según sea necesario.
 
-Para que funcione, la cola del BFS debe guardar referencias a los directorios comunes a ambas versiones, pero cuyas versiones difieren. Tambien debe guardar una referencia al mismo directorio de la versión actual (posiblemente nuevo).
+Como se van a comparar archivos en directorios en paralelo sobre árboles de versión distintos, conviene utilizar un recorrido como BFS, que por ser en amplitud facilita el unir los archivos por nivel a la vez que se actualiza el árbol nuevo de versiones de forma ordenada.
 
-Se guardan estos directorios porque son en donde hay diferencias entre versiones.
+Para que esto funcione, la cola del BFS debe guardar referencias a los directorios comunes a ambas versiones, pero cuyas versiones difieren (digamos $src$ y $dst$). Tambien debe guardar una referencia al mismo directorio de la versión actual (posiblemente nuevo, digamos $m_ver$).
+
+Se guardan estas referencias a directorios porque corresponden a los directorios en donde hay diferencias entre versiones y el último porque corresponde a la versión destino.
 
 Cada vez que se desempile, se actualiza el directorio actual (usando la ultima referencia, la del arbol de la versión actual).
 
-Luego se revisa el contenido de los directorios asociados a las referencias de las versiones de origen. Esta revisión debe ser en paralelo, se esta intentando unir un directorio común , pero con diferencias entre las versiones origen y destino. 
+Luego se revisa el contenido de los directorios asociados a las referencias de las versiones de origen y destino. Esta revisión debe ser en paralelo, pues se está intentando unir un directorio común , pero con diferencias entre las versiones origen y destino. 
 
-Para hacer esta comparación en paralelo sirve ***ordenar*** a su contenido (adyacentes) por nombre, e implementar la unión de los directorios con una lógica similar a la de `merge` en `mergesort`:
+Para hacer esta comparación en paralelo sirve ***ordenar*** el contenido (adyacentes) de cada directorio por nombre, e implementar la unión de los directorios con una lógica similar a la de `merge` en `mergesort`:
 
 <aside>
 💡 Ejemplo en `haskell` del código de `merge` del que se habla
@@ -271,8 +273,8 @@ Notese que el codigo de arriba actúa como una unión **si las listas de entrada
 
 </aside>
 
-- Siempre que ambos directorios aun tengan archivos por ver, se revisan en base a la **lógica de fusión** . En este caso se toma en cuenta que ************************************************************************si directorios en versiones distintas tienen el mismo nombre, pero una versión distinta asociada, se empilan************************************************************************ (corresponde al caso 3 del ejemplo)
-- Si sólo uno de los directorios tiene archivos por ver, entonces los archivos  no eran comunes a ambas versiones y se incluyen en la versión destino. En este caso no se empila nada, solo se añaden archivos. Corresponde a los casos 1 y 2 según sea necesario)
+- Siempre que ambos directorios aún tengan archivos por ver, se revisan en base a la **lógica de fusión** . En este caso se toma en cuenta que ************************************************************************si directorios en versiones distintas tienen el mismo nombre, pero una versión distinta asociada, se empilan************************************************************************ (corresponde al caso 3 del ejemplo)
+- Si sólo uno de los directorios tiene archivos por ver, entonces los archivos  no eran comunes a ambas versiones y se incluyen en la versión de fusión. En este caso no se empila nada, solo se añaden archivos. Corresponde a los casos 1 y 2 según sea necesario)
 
 La logica de fusión está encapsulada por lo siguiente. Dados 2 archivos cualesquiera pertenecientes a directorios comunes de ambas versiones y sean $u$ y $v$ dichos directorios:
 
@@ -284,19 +286,14 @@ La logica de fusión está encapsulada por lo siguiente. Dados 2 archivos cuales
             - Si son directorios se empilan ambos.
             - Si son archivo se aplica **diff**.
     - De lo contrario
-        - Se añade primero **********************************************************la entrada que sea un archivo********************************************************** y se considera la siguiente entrada de su directorio asociado (digamos $u$)
+        - Se añade primero **********************************************************la entrada que sea un archivo regular********************************************************** y se considera la siguiente entrada de su directorio asociado (digamos $u$)
 - De lo contrario
-    - Se anade la entrada que compare como menor (lexicograficamente) y se considera la siguiente entrada de su directorio asociado (digamos $u$)
+    - Se añade la entrada que compare como menor (lexicograficamente) y se considera la siguiente entrada de su directorio asociado (digamos $u$)
 
-> Se añade primero la entrada de un archivo pues se escoge ordenar de esta manera para poder llevar a cabo bien la intersección. Añadir poner los directorios primeros también sería una opción, de haber ordenado así las entradas para los adyacentes en un principio.
+> Se añade primero la entrada de un **archivo regular** y después de directorio pues así se escoge ordenar a los adyacentes y la consistencia es necesaria para que la unión sea correcta. Poner los directorios primeros también sería una opción, de haber ordenado así las entradas para los adyacentes en un principio.
 > 
 
 El `diff` que se llama entre archivos regulares de versiones distintas no es más que una modificación del problema **********EDIST********** que recupera un string en donde se reporta el mínimo numero de cambios en el contenido del archivo entre versiones.
-
-<aside>
-💡 Discusión sobre complejidad
-
-</aside>
 
 ### Importar
 
