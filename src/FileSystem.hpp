@@ -146,7 +146,6 @@ namespace CELV
         /// @param version active version
         /// @return true if should use change box, false otherwise
         bool UseChangeBox(Version version) const { return _change_box != nullptr && _change_box->GetVersion() <= version; }
-
         private:
         /// @brief Update file_id of this node. Return new node if new was created
         /// @param new_file_id updated file id
@@ -161,6 +160,7 @@ namespace CELV
         /// @param new_version New version to mark in any newly modified node
         /// @return nullptr if no new node was created, ptr to newly created node otherwise
         std::shared_ptr<FileTree> UpdateNode(const ChildMap& new_contained_files,Version current_version, Version new_version, std::shared_ptr<FileTree>& out_new_version_parent); // operacion de directorio
+
 
         private:
         ChildMap _contained_files;

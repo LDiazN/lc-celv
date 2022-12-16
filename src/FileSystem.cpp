@@ -6,7 +6,9 @@
 #include <algorithm>
 #include <sstream>
 #include <string>
+
 #include "Core.hpp"
+#include "Diff.hpp"
 
 namespace CELV
 {
@@ -492,90 +494,203 @@ namespace CELV
 
     STATUS FileSystem::MergeVersions(Version src, Version dst, std::string &out_error_msg)
     {
-
-        struct COMPARE {
-            // ! Aqui seguro hay peo de scope por usar _files
-            bool operator()(std::shared_ptr<FileTree> &a, std::shared_ptr<FileTree> &b) 
-            {
-                const auto &l_content = _files[ a->_file_id ];
-                const auto &r_content = _files[ b->_file_id ];
-                
-                // If types are the same, order alphanumerically
-                if (l_content._type == r_content._type)
-                    return l_content.name < r_content.name;
-
-                // Otherwise, regular files go first    
-                return l_content._type == DOCUMENT;
-            }
-
-        } comparison;
-
         if (src == dst)
         {
             out_error_msg = "Versions to merge must differ.";
             return ERROR;
         }
 
-        // Set tracking of version to parent of maximum. Just by choice
-        _versions[ _next_available_version++ ] = src > dst ? _versions[src] : _versions[dst]; 
+        // Set tracking of version to maximum. By choice
+        auto tracking_version = src > dst ? src : dst; 
 
-        // Queue to move over common directories in a bredth traversal
-        std::queue< std::pair<std::shared_ptr<FileTree> , std::shared_ptr<FileTree> > > next_visit;
+        // Create new root depending on empty changebox accordingly
+        if ( _versions[ tracking_version ]->UseChangeBox(tracking_version))
+            _versions.emplace_back(_versions[ tracking_version ]);
+        else {
+            auto root_copy = std::make_shared<FileTree>(_versions[ tracking_version]->GetFileID(), nullptr, tracking_version);
+            _versions.push_back( root_copy );
+        }
+
+        // Update working dir to new tracking
+        _working_dir = _versions[ tracking_version ] ;
+
+        typedef struct TMP {
+            std::shared_ptr<FileTree> l_ver, r_ver, new_ver;
+        } version_record;
+        // Queue to move over common directories in a bredth first traversal
+        std::queue<version_record> next_visit;
         
-        next_visit.push( make_pair(_versions[src], _versions[dst]) );
+        next_visit.push( version_record{_versions[src], _versions[dst], _working_dir} );
         while (!next_visit.empty()) 
         {
-            const auto &current_comp_dir =  next_visit.front();
+            const auto &current_comp_dir = next_visit.front();
             next_visit.pop();
 
+            // Set working dir according to newly created dirs
+            _working_dir = current_comp_dir.new_ver;
+
             // Consider files from directory (adjacents)
-            auto l_files = current_comp_dir.first->ContainedFiles(src);
-            auto r_files = current_comp_dir.second->ContainedFiles(dst);
+            auto l_files = current_comp_dir.l_ver->ContainedFiles(src);
+            auto r_files = current_comp_dir.r_ver->ContainedFiles(dst);
 
             // Here sort adyacents of both directories by name alphanumerically
             sort(l_files.begin(), l_files.end(), [&](const auto &a, const auto &b){
-                const auto &l_content = _files[ a->GetFileId(src) ];
-                const auto &r_content = _files[ b->GetFileId(dst) ];
+                const auto &l_content = _files[ a->GetFileID(src) ];
+                const auto &r_content = _files[ b->GetFileID(dst) ];
                 
                 // If types are the same, order alphanumerically
                 if (l_content.GetFileType() == r_content.GetFileType())
                     return l_content.GetName() < r_content.GetName();
 
                 // Otherwise, regular files go first    
-                return l_content.GetFileType() == DOCUMENT;
+                return l_content.GetFileType() == FileType::DOCUMENT;
             });
 
             sort(r_files.begin(), r_files.end(), [&](const auto &a, const auto &b) {
-                const auto &l_content = _files[ a->GetFileId(src) ];
-                const auto &r_content = _files[ b->GetFileId(dst) ];
+                const auto &l_content = _files[ a->GetFileID(src) ];
+                const auto &r_content = _files[ b->GetFileID(dst) ];
                 
                 // If types are the same, order alphanumerically
                 if (l_content.GetFileType() == r_content.GetFileType())
                     return l_content.GetName() < r_content.GetName();
 
                 // Otherwise, regular files go first    
-                return l_content.GetFileType() == DOCUMENT;
+                return l_content.GetFileType() == FileType::DOCUMENT;
             });
 
             // Perform "merge" logic
             auto l_it = l_files.begin();
             auto r_it = r_files.begin();
-            while (true) 
+            while (l_it != l_files.end() || r_it != r_files.end()) 
             {
+                const auto &l_content  = _files[ (*l_it)->GetFileID(src)];
+                const auto &r_content  = _files[ (*r_it)->GetFileID(dst) ];
+
+                // There are still files on both directories to compare 
                 if (l_it != l_files.end() && r_it != r_files.end())
                 {
-                    const auto &l_content  = _files[ (*l_it)->GetFileID(src)];
-                    const auto &r_content  = _files[ (*r_it)->GetFileID(dst) ];
+                    if (l_content.GetName().compare(r_content.GetName()) == 0)
+                    {
+                        if (l_content.GetFileType() == r_content.GetFileType())
+                        {
+                            // If versions are equal then do nothing since one of src, dest represents merge version
+                            if ((*l_it)->GetVersion() != (*r_it)->GetVersion())
+                            {
+                                // If directories, create new and push them to further check files
+                                if (l_content.GetFileType() == FileType::DIRECTORY)
+                                {
+                                    // * DIR creation logic 
+                                    CreateFile(l_content.GetName(), FileType::DIRECTORY, out_error_msg);
 
-                    if (l_content.GetFileType() == r_content.GetFileType());
-                    // ! Check versions and add accordingly
-                    else ;
+                                    // Take id from just created directory
+                                    auto dir_id = _files[ _files.size() - 1].GetId(); // ! OJO risky
+
+                                    printf("Aqui\n");
+                                    next_visit.push( version_record{*l_it, *r_it, _working_dir->GetChilds(tracking_version).at(dir_id)} );
+
+                                }
+                                else
+                                {
+                                    // * Reg creation logic with content merge
+                                    // If files create new with edist
+                                    std::string A(l_content.GetContent()), B(r_content.GetContent());
+                                    DIFF tmp(A, B);
+                                    std::string diffed_content = tmp.compute_diff();
+
+                                    CreateFile(l_content.GetName(), FileType::DOCUMENT, out_error_msg);
+                                    WriteFile(l_content.GetName(), diffed_content, out_error_msg);
+                                }
+                            }
+                            // Move both
+                            ++l_it; ++r_it;
+                        }
+                        else
+                        {
+                            // ! OJO
+                            // Create file first, move iterator related to file
+                            if (l_content.GetFileType() == FileType::DOCUMENT)
+                            {
+                                // * Regfile creation logic with l_content
+                                CreateFile(l_content.GetName(), FileType::DOCUMENT, out_error_msg);
+                                WriteFile(l_content.GetName(), l_content.GetContent(), out_error_msg);
+                                ++l_it;
+                            }
+                            else {
+                                // * Regfile creation logic with r_content
+                                CreateFile(r_content.GetName(), FileType::DOCUMENT, out_error_msg);
+                                WriteFile(r_content.GetName(), r_content.GetContent(), out_error_msg);
+                                ++r_it;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Create smaller one (by name) no matter type, move it related to smaller one
+                        if (l_content.GetName().compare(r_content.GetName()) < 0)
+                        {
+                            // * either DIR or REG creation logic
+                            if (l_content.GetFileType() == FileType::DOCUMENT)
+                            {
+                                CreateFile(l_content.GetName(), FileType::DOCUMENT, out_error_msg);
+                                WriteFile(l_content.GetName(), l_content.GetContent(), out_error_msg);
+                            }
+                            else 
+                                CreateFile(l_content.GetName(), FileType::DIRECTORY, out_error_msg);
+                            ++l_it;
+                        }
+                        else
+                        {
+                            // * either DIR or REG creation logic
+                            if (r_content.GetFileType() == FileType::DOCUMENT)
+                            {
+                                CreateFile(r_content.GetName(), FileType::DOCUMENT, out_error_msg);
+                                WriteFile(r_content.GetName(), r_content.GetContent(), out_error_msg);
+                            }
+                            else 
+                                CreateFile(r_content.GetName(), FileType::DIRECTORY, out_error_msg);
+                            ++r_it;
+                        }
+                    } 
                 }
-                else if (l_it != l_files.end());
-                else if (r_it != r_files.end());
+                // Only left directory holds files
+                else if (l_it != l_files.end())
+                {
+                    // * either DIR or REG creation logic
+                    if (l_content.GetFileType() == FileType::DOCUMENT)
+                    {
+                        CreateFile(l_content.GetName(), FileType::DOCUMENT, out_error_msg);
+                        WriteFile(l_content.GetName(), l_content.GetContent(), out_error_msg);
+                    }
+                    else 
+                        CreateFile(l_content.GetName(), FileType::DIRECTORY, out_error_msg);
+                    ++l_it;
+                }
+                // Only right directory hodls files
+                else if (r_it != r_files.end())
+                {
+                    // * either DIR or REG creation logic
+                    if (r_content.GetFileType() == FileType::DOCUMENT)
+                    {
+                        CreateFile(r_content.GetName(), FileType::DOCUMENT, out_error_msg);
+                        WriteFile(r_content.GetName(), r_content.GetContent(), out_error_msg);
+                    }
+                    else 
+                        CreateFile(r_content.GetName(), FileType::DIRECTORY, out_error_msg);
+                    ++r_it;
+                }
                 else break;
             }
         }
+
+        //Register this action
+        PushAction(Action
+            { 
+                ActionType::MERGE,
+                {std::to_string(src) + "::" + std::to_string(dst)}, 
+                tracking_version, 
+                _next_available_version
+            });
+
         return SUCCESS;
     }
 }

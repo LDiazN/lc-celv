@@ -12,7 +12,7 @@ DIFF::DIFF(const std::string &u, const std::string &v)
         , _B(v)
         , _memo(u.size() + 1) 
 {
-    assert( (u.size() > 0 || v.size() > 0) && "Both strings are empty!");
+    //assert( (u.size() > 0 || v.size() > 0) && "Both strings are empty!");
 
     // Initialize table size
     for (size_t i=0; i<_memo.size(); ++i)
@@ -21,11 +21,15 @@ DIFF::DIFF(const std::string &u, const std::string &v)
 
 std::string DIFF::compute_diff() 
 {
-    // Precalcula la edist para recuperar camino
-    edist_pdist();
+    if (_A.compare(_B) != 0)
+    {
+        // Precalcula la edist para recuperar camino
+        edist_pdist();
 
-    // Recupera el camino
-    return produce_diff();
+        // Recupera el camino
+        return produce_diff();
+    }
+    return _A;
 }
 
 int DIFF::edist_pdist() 

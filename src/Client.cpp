@@ -254,7 +254,9 @@ namespace CELV
 
     void Client::CELVFusion(const Version& version1, const Version& version2)
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error_msg;
+        if (_filesystem.MergeVersions(version1, version2, error_msg) == ERROR)
+            std::cerr << RED << error_msg << RESET << std::endl;
     }
 
     void Client::Help()
