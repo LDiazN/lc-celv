@@ -297,17 +297,41 @@ El `diff` que se llama entre archivos regulares de versiones distintas no es má
 
 ### Importar
 
-**Implementación deseada.**
+Se empleó el header `filesystem` para recorrer el árbol de directorios local.
 
-Se empleo el header `filesystem` para recorrer el árbol de directorios local.
+Primero se busca linealmente sobre los hijos del directorio de trabajo para buscar si ya existe un directorio con el mismo nombre. Si existe, se retorna un error, de lo contrario, el proceso continua.
 
-La forma en la que se recorrieron las entradas de directorio local fue utilizando un  `recursive_directory_iterator` que recorre en un orden no especificado, las entradas de directorios y subdirectorios encontrados, para un `path` dado.
+Luego, se crea un `FileTree` que imita el directorio local de la siguiente forma:
 
-Puesto que no se puede anticipar cuáles archivos tendrán los permisos adecuados y no se tiene acceso a un “contexto” de llamada que permitiría reubicarse con facilidad (en el filesystem virtual), por usar los iteradores mencionados la creación del filesystem es algo costosa.
+1. Se crea un `FileTree` sin hijos que funciona de raíz.
+2. Se itera sobre los hijos del directorio especificado, con ayuda de un `std::filesyste::directory_iterator` .
+3. Si el archivo actual no tiene permisos para ser leido o es un enlace, se levanta una advertencia y se ignora
+4. Si el archivo es un documento de texto, se crea un nuevo `FileTree` con su contenido como y nombre, y se agrega como hijo del directorio actual
+5. Si el archivo es directorio, se hace una llamada recursiva para clonar este subarbol de archivos, y el subarbol generado de asigna como hijo de la raíz actual
+6. A ************todos************ los nodos generados por este proceso se les configura correctamente su `CELV` en caso de haber uno en existencia.
 
-Para cada `path` del filesystem sobre el que se tenga permiso de escritura, se crea cada uno de sus componentes (de ser necesario, pero creando siempre el último, pues los iteradores visitan cada entrada de directorio una sola vez).
+Finalmente, este nuevo `FileTree` se añade como hijo del directorio de trabajo, siguiendo la misma lógica para crear archivo que se explicó anteriormente.
 
-El costo de importar un punto $d$ en el sistema de archivos local es entonces la sumatoria de los caminos desde $d$ hasta cada hoja. Esto es costoso pero se utilizó por tiempo y por sopesar la complejidad de utilizar enfoques más arcaicos al recorrido de directorio local.
+************Tiempo************
+
+```python
+O(CantidadArchivosLocales + MaxArchivosEnDir + AlturaArbol)
+- La busqueda lineal del archivo al inicio del proceso toma tiempo O(MaxArchivosEnDir)
+- El recorrido del arbol de archivos local para realizar la copia toma O(CantidadArchivosLocales)
+- La inserción de un elemento del arbol toma tiempo O(AlturaArbol)
+```
+
+**************Espacio**************
+
+```python
+O(AlturaArbolLocal)
+- Aunque se crea todo un arbol nuevo, este no es espacio extra, corresponde al espacio
+requerido por el resultado que queremos
+- El espacio necesario para el proceso es el que toma la pila de la recursión, 
+dado que se usa un recorrido en profundidad. Como la máxima cantidad de archivos que
+pueden empilarse es igual a la altura del subarbol de archivos local, entonces este 
+es el espacio requerido.
+```
 
 ### Inicializar CELV
 
