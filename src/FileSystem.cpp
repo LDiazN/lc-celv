@@ -5,6 +5,10 @@
 #include <sstream>
 #include <string>
 #include "Core.hpp"
+#include <filesystem>
+#include <iostream>
+#include <fstream>
+#include <vector>
 
 namespace CELV
 {
@@ -62,6 +66,78 @@ namespace CELV
             return _celv->GetFiles()[_file_id];
 
         return _files[_file_id];
+    }
+
+    STATUS FileTree::FromLocalFileSystem(const std::string& src_path, std::shared_ptr<FileTree>& out_tree, std::string& out_error_msg, std::vector<File>& files, Version version, std::shared_ptr<CELV> celv)
+    {
+        
+        std::filesystem::path p(src_path);
+
+        // Guarantee that path exists
+        if (!std::filesystem::exists(p) || !std::filesystem::is_directory(p))
+        {
+            std::stringstream ss;
+            ss <<"Path to a directory '"<<src_path<<"' does not exists\n";
+            out_error_msg = ss.str();
+            return ERROR;
+        }
+
+        // Root of the entire filesystem
+        auto root_file_id = files.size();
+        files.emplace_back(p.filename().string(), root_file_id);
+        auto overall_root = std::make_shared<FileTree>(root_file_id, nullptr, version, celv);
+
+        // Iterate through whole filesystem subtree rooted at path
+        auto it = std::filesystem::directory_iterator(p);
+        while (it != end(it))
+        {
+            
+            //Check permissions. Need a way to check I have ownership 
+            auto perms = it->status().permissions();
+            if ( ( (perms & std::filesystem::perms::owner_read) != std::filesystem::perms::none 
+                    && (perms & std::filesystem::perms::owner_write) != std::filesystem::perms::none
+                 ) || (
+                    (perms & std::filesystem::perms::others_read) != std::filesystem::perms::none 
+                    && (perms & std::filesystem::perms::others_write) != std::filesystem::perms::none 
+                 )
+                )
+            {
+                if (std::filesystem::is_directory(it->path()))
+                {
+                    FileID new_id = files.size();
+                    files.push_back(File(it->path().filename().string(), new_id));
+
+                    std::shared_ptr<FileTree> child_dir;
+                    if (FromLocalFileSystem(it->path().string(), child_dir, out_error_msg, files, version, celv) == ERROR)
+                        return ERROR;
+                    
+                    overall_root->AddFile(child_dir);
+                    child_dir->SetParent(child_dir);
+                }
+                else if (std::filesystem::is_regular_file(it->path()))
+                {
+                    std::ifstream  input_str(it->path().string());
+                    std::stringstream buff;
+                    buff << input_str.rdbuf();
+
+                    // Create actual node
+                    FileID new_id = files.size();
+                    files.push_back(File(it->path().filename().string(), new_id, buff.str()));
+
+                    auto child = std::make_shared<FileTree>(new_id, overall_root, version, celv);
+                    overall_root->AddFile(child);
+                }
+                else 
+                    std::cerr<<" Ignoring '"<<it->path().string()<<"'. Not regular file nor directory\n";
+            }
+            else 
+                std::cerr<<" Ignoring '"<<it->path().string()<<"'. Not enough permissions\n";
+
+            //Move to next directory entry
+            ++it;
+        } 
+        out_tree = overall_root;
+        return SUCCESS;
     }
 
     const std::vector<File> FileTree::List() const
@@ -305,6 +381,33 @@ namespace CELV
         return SUCCESS;
     }
 
+    STATUS FileTree::ImportLocalPath(const std::string& path, std::string& out_error_msg, std::shared_ptr<FileTree> parent)
+    {
+        if (CELVActive())
+        {
+            return _celv->ImportLocalPath(path, out_error_msg, _celv);
+        }
+
+        std::filesystem::path p(path);
+        auto filename = p.filename().string();
+
+        for (auto const& [file_id, file_ref] : _contained_files)
+        {
+            if (filename == _files[file_id].GetName())
+            {
+                out_error_msg = "File already exists";
+                return ERROR;
+            }
+        }
+
+        std::shared_ptr<FileTree> new_child;
+        if (FromLocalFileSystem(path, new_child, out_error_msg, _files) == ERROR)
+            return ERROR;
+        new_child->SetParent(parent);
+        AddFile(new_child);
+        return SUCCESS;
+    }
+
     std::shared_ptr<FileTree> FileTree::AddFile(std::shared_ptr<FileTree> file, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent)
     {
         ChildMap new_contained(GetChilds(current_version));
@@ -344,7 +447,7 @@ namespace CELV
         ChildMap new_childs(old_childs);
         new_childs.erase(old_file_id);
 
-        auto const& old_node = (*possible_old_child).second;
+        auto const& old_node = possible_old_child->second;
         auto const new_node = std::make_shared<FileTree>(new_file_id, old_node->GetParent(), new_version, _celv);
         new_childs[new_file_id] = new_node;
 
@@ -436,7 +539,7 @@ namespace CELV
         new_node->SetNewChilds(new_contained_files);
 
         // Update parent for this node
-        if (_parent == nullptr)
+        if (IsRoot())
         {   
             // If this node is root, then new created node is this versions's root
             out_new_version_parent = new_node;
@@ -505,6 +608,8 @@ namespace CELV
         case ActionType::MERGE:
             ss << "celv_fusion";
             break;
+        case ActionType::IMPORT:
+            ss << "celv_importar";
         default:
             break;
         }
@@ -574,6 +679,22 @@ namespace CELV
             // Traverse over its children
             for(auto [file_id, file_ref] : next_tree->_contained_files)
                 file_trees.push(file_ref);
+        }
+
+        // Now update left side of ChildMaps
+        file_trees.push(celv->_working_dir);
+        while(!file_trees.empty())
+        {
+            auto next_tree = file_trees.top();
+            file_trees.pop();
+            FileTree::ChildMap new_contained;
+            for (auto const&[old_file_id, file_ref] : next_tree->_contained_files)
+            {
+                auto new_id = old_to_new[old_file_id];
+                new_contained[new_id] = file_ref;
+                file_trees.push(file_ref);
+            }
+            next_tree->SetNewChilds(new_contained);
         }
 
         return celv;
@@ -793,6 +914,58 @@ namespace CELV
 
         out_error_msg = "No such file or directory";
         return ERROR;
+    }
+
+    STATUS CELV::ImportLocalPath(const std::string& path, std::string& out_error_msg, std::shared_ptr<CELV> celv)
+    {
+        std::filesystem::path p(path);
+        auto filename = p.filename().string();
+
+        for(auto const&[file_id, file_ref] : _working_dir->GetChilds(_current_version))
+        {
+            auto child_name = _files[file_id].GetName();
+            if (filename == child_name)
+            {
+                out_error_msg = "File already exists";
+                return ERROR;
+            }
+        }
+
+        std::shared_ptr<FileTree> new_node;
+        if (FileTree::FromLocalFileSystem(path, new_node, out_error_msg, _files, _next_available_version, celv) == ERROR)
+            return ERROR;
+        
+        new_node ->SetParent(_working_dir);
+
+        // Add file to current directory
+        // Note that adding a new file means that the version root might be new 
+        // and that a new version of current working dir could be created
+        std::shared_ptr<FileTree> possible_new_version_parent = nullptr;
+        auto possible_new_node = _working_dir->AddFile(new_node, _current_version, _next_available_version, possible_new_version_parent);
+
+        // Update version root
+        if (possible_new_version_parent != nullptr) // if a new root is created, added to version control
+            _versions.push_back(possible_new_version_parent);
+        else // if no new version of root is created, repeat root
+            _versions.push_back(_versions[_current_version]);
+
+        // If created a new node version for our working directory, update current working directory
+        if (possible_new_node != nullptr)
+            _working_dir = possible_new_node;
+
+        
+        //Register this action
+        PushAction(Action
+            { 
+                ActionType::IMPORT, 
+                {path}, 
+                _current_version, 
+                _next_available_version
+            });
+
+        _current_version = _next_available_version++;
+        
+        return SUCCESS;
     }
 
     STATUS CELV::SetVersion(Version version, std::string& out_error_msg, size_t skip_in_stack)

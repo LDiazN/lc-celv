@@ -117,9 +117,12 @@ namespace CELV
         }
         else if (command == "celv_importar")
         {
-            std::string filepath;
-            if (ss >> filepath)
-                Import(filepath); 
+            ss >> std::ws;
+            std::string content;
+            std::getline(ss, content);
+
+            if (content != "")
+                Import(content); 
             else 
                 std::cerr << "Missing argument for command: " << command << std::endl;
         }
@@ -229,7 +232,11 @@ namespace CELV
 
     void Client::Import(const std::string& local_filepath)
     {
-        std::cout << "Function not yet implemented" << std::endl;
+        std::string error_msg;
+        if(_filesystem.Import(local_filepath, error_msg) == ERROR)
+        {
+            std::cerr << RED << error_msg << RESET << std::endl;
+        }
     }
 
     void Client::CELVInit()

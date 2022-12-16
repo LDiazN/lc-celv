@@ -5,6 +5,7 @@
 #include <memory>
 #include "Core.hpp"
 #include <map>
+#include <assert.h>
 
 namespace CELV
 {
@@ -60,7 +61,8 @@ namespace CELV
         REMOVE,
         CREATE_DIR,
         CREATE_DOC,
-        MERGE
+        MERGE,
+        IMPORT
     };
 
     using ActionArgs = std::vector<std::string>;
@@ -144,6 +146,8 @@ namespace CELV
         /// @return Success status
         STATUS SetVersion(Version version, std::string& out_error_msg, size_t skip_in_stack = 0);
 
+        STATUS ImportLocalPath(const std::string& path, std::string& out_error_msg, std::shared_ptr<CELV> celv);
+
         /// @brief Get currently active version
         /// @return currently active version
         Version GetVersion() const { return _current_version; }
@@ -161,6 +165,7 @@ namespace CELV
 
         std::shared_ptr<FileTree> GetParentDir() const { return _parent_file; }
         void SetParentDir(std::shared_ptr<FileTree> parent_dir) { _parent_file = parent_dir; }
+
 
         private:
         /// @brief Push an action when performing some operation
@@ -202,6 +207,11 @@ namespace CELV
         static std::shared_ptr<FileTree> MakeRootFileTree();
 
         File GetFileData() const;
+
+        /// @brief Generate a FileTree based on a copy of a local filepath  
+        /// @param src_path Path in the local machine to an actual directory
+        /// @return Success
+        static STATUS FromLocalFileSystem(const std::string& src_path, std::shared_ptr<FileTree>& out_tree, std::string& out_error_msg, std::vector<File>& files,  Version version = 0, std::shared_ptr<CELV> celv = nullptr);
 
         // The following functions are CRUD function that may or may not use the version control system depending on 
         // the confuguration of the current filetree node
@@ -270,6 +280,12 @@ namespace CELV
         /// @return 
         STATUS InitCELV(std::string& out_error_msg, std::shared_ptr<FileTree> celv_parent = nullptr);
 
+        /// @brief Import a path in the actual local storage as a subtree, ignores links and files with missing permissions
+        /// @param path path to a directory in local storage
+        /// @param out_error_msg 
+        /// @return 
+        STATUS ImportLocalPath(const std::string& path, std::string& out_error_msg, std::shared_ptr<FileTree> parent);
+
         // The following functions are Control version related, used with CELV object
         // -- < Version control functions > --------------------------------------------------------------
 
@@ -289,6 +305,11 @@ namespace CELV
         /// @param out_new_possible_parent New version parent if new root was created. Null if no new root is created.
         /// @return new node if one was created during the update
         std::shared_ptr<FileTree> AddFile(std::shared_ptr<FileTree> file, Version current_version, Version new_version, std::shared_ptr<FileTree>& out_possible_new_parent);
+        void AddFile(std::shared_ptr<FileTree> file)
+        {
+            assert(file != nullptr);
+            _contained_files[file->GetFileID()] = file;
+        }
 
         /// @brief Delete specified file from this node
         /// @param file_id id of file to delete
@@ -465,6 +486,8 @@ namespace CELV
         /// @param out_error_msg possible error message in case of error
         /// @return Success status
         STATUS InitCELV(std::string& out_error_msg) { return _working_directory->InitCELV(out_error_msg, _working_directory); }
+
+        STATUS Import(const std::string& filepath, std::string& out_error_msg) { return _working_directory->ImportLocalPath(filepath, out_error_msg, _working_directory); }
 
         /// @brief Destroy all data stored in this object
         void Destroy();
